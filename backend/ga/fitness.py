@@ -14,26 +14,26 @@ def evaluate_population(
     spark = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Evaluasi populasi portofolio berdasarkan backend terpilih.
+    Evaluates the portfolio population based on the selected execution backend.
     
     Args:
-        population: np.ndarray berukuran (P, N) di mana P adalah populasi, N jumlah aset.
-        mu: expected returns per aset (N,)
+        population: np.ndarray of shape (P, N) where P is the population size and N is the number of assets.
+        mu: expected returns per asset (N,)
         Sigma: covariance matrix (N, N)
         rf_rate: risk-free interest rate (BI rate)
         mode: "sequential", "numpy_vectorized", "cuda", "pyspark_cpu", "pyspark_cuda"
-        spark: SparkSession aktif (diperlukan jika menggunakan mode PySpark)
+        spark: Active SparkSession (required if using PySpark mode)
         
     Returns:
-        returns: (P,) expected returns portofolio
-        volatilities: (P,) volatilitas portofolio
-        sharpes: (P,) fitness/Sharpe ratio portofolio
+        returns: (P,) expected portfolio returns
+        volatilities: (P,) portfolio volatilities
+        sharpes: (P,) portfolio fitness/Sharpe ratios
     """
     mode_clean = mode.lower().strip()
     P, N = population.shape
 
     if mode_clean == "sequential":
-        # Loop standar Python murni tanpa vektorisasi NumPy (untuk baseline benchmark sekuensial)
+        # Pure Python loop without NumPy vectorization (used as baseline benchmark)
         returns = np.zeros(P)
         volatilities = np.zeros(P)
         sharpes = np.zeros(P)
@@ -45,7 +45,7 @@ def evaluate_population(
             for k in range(N):
                 ret += w[k] * mu[k]
             
-            # 2. Volatilitas
+            # 2. Volatility
             var = 0.0
             for a in range(N):
                 temp = 0.0
@@ -63,27 +63,27 @@ def evaluate_population(
         return returns, volatilities, sharpes
 
     elif mode_clean == "numpy_vectorized":
-        # Vektorisasi CPU dengan NumPy (Fallback cepat)
+        # Vectorized CPU computation using NumPy
         return cpu_evaluate_portfolios(population, mu, Sigma, rf_rate)
 
     elif mode_clean == "cuda":
-        # GPU Acceleration dengan CuPy
+        # GPU Acceleration using CuPy
         if CUDA_AVAILABLE:
             try:
                 return gpu_evaluate_portfolios(population, mu, Sigma, rf_rate)
             except Exception as e:
-                logger.error(f"Gagal evaluasi via CUDA GPU: {e}. Melakukan fallback ke NumPy.")
+                logger.error(f"Failed to evaluate via CUDA GPU: {e}. Falling back to NumPy CPU.")
                 return cpu_evaluate_portfolios(population, mu, Sigma, rf_rate)
         else:
-            logger.warning("CUDA tidak tersedia pada environment ini. Menggunakan NumPy.")
+            logger.warning("CUDA is not available in this environment. Falling back to NumPy CPU.")
             return cpu_evaluate_portfolios(population, mu, Sigma, rf_rate)
 
     elif mode_clean == "pyspark_cpu":
-        # Parallel RDD map di CPU
+        # Parallel RDD map execution on CPU
         if spark is None:
-            raise ValueError("SparkSession harus disertakan untuk mode pyspark_cpu")
+            raise ValueError("SparkSession must be provided for pyspark_cpu mode")
         
-        # Parallelize dan hitung menggunakan RDD map
+        # Parallelize and compute using RDD map
         sc = spark.sparkContext
         b_mu = sc.broadcast(mu)
         b_Sigma = sc.broadcast(Sigma)
@@ -99,22 +99,22 @@ def evaluate_population(
             sharpe = (ret - b_rf.value) / vol if vol > 0 else -99.0
             return ret, vol, sharpe
 
-        # Collect hasil
+        # Collect results
         results = rdd_weights.map(map_pyspark_metrics).collect()
         
-        # Bersihkan broadcast
+        # Clean up broadcasts
         b_mu.unpersist()
         b_Sigma.unpersist()
         b_rf.unpersist()
         
-        # Ubah list of tuple menjadi array numpy
+        # Convert list of tuples to numpy arrays
         results_arr = np.array(results)
         return results_arr[:, 0], results_arr[:, 1], results_arr[:, 2]
 
     elif mode_clean == "pyspark_cuda":
-        # Hybrid: RDD mapPartitions + CuPy di GPU (sangat scalable)
+        # Hybrid: RDD mapPartitions + CuPy on GPU (highly scalable)
         if spark is None:
-            raise ValueError("SparkSession harus disertakan untuk mode pyspark_cuda")
+            raise ValueError("SparkSession must be provided for pyspark_cuda mode")
             
         sc = spark.sparkContext
         b_mu = sc.broadcast(mu)
@@ -128,22 +128,22 @@ def evaluate_population(
             if not weights_list:
                 return []
             
-            # Konversi menjadi numpy array untuk evaluasi kelompok (chunk)
+            # Convert to numpy array for batch evaluation (chunk)
             weights_arr = np.array(weights_list)
             
-            # Coba impor CuPy di worker node
+            # Try to import CuPy on worker node
             try:
                 import cupy as cp
                 
-                # Import kernels secara dinamis
+                # Import kernels dynamically
                 from backend.cuda.kernels import gpu_evaluate_portfolios
                 rets, vols, sharpes = gpu_evaluate_portfolios(
                     weights_arr, b_mu.value, b_Sigma.value, b_rf.value
                 )
-                # Kembalikan sebagai list of tuple
+                # Return as list of tuples
                 return list(zip(rets.tolist(), vols.tolist(), sharpes.tolist()))
             except Exception as ex:
-                # Fallback ke CPU numpy jika worker tidak memiliki GPU/CuPy
+                # Fallback to CPU numpy if the worker lacks GPU or CuPy libraries
                 rets, vols, sharpes = cpu_evaluate_portfolios(
                     weights_arr, b_mu.value, b_Sigma.value, b_rf.value
                 )
@@ -159,4 +159,4 @@ def evaluate_population(
         return results_arr[:, 0], results_arr[:, 1], results_arr[:, 2]
 
     else:
-        raise ValueError(f"Mode evaluasi tidak dikenali: {mode}")
+        raise ValueError(f"Unrecognized evaluation mode: {mode}")

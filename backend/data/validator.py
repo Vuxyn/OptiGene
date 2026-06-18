@@ -6,16 +6,16 @@ logger = logging.getLogger(__name__)
 
 def validate_assets(df_prices: pd.DataFrame, min_coverage: float = 0.95) -> tuple[pd.DataFrame, list[str]]:
     """
-    Memvalidasi data historis harga aset berdasarkan kriteria:
-    1. Masa listing minimal 3 tahun (harus aktif sejak awal periode 2022-01-01 hingga 2024-12-31).
-    2. Coverage data penutupan harian >= 95% (persentase data non-NaN).
+    Validates historical asset price data based on the following criteria:
+    1. Minimum listing period of 3 years (must be active since the start of the 2022-01-01 to 2024-12-31 period).
+    2. Daily close data coverage >= 95% (percentage of non-NaN data).
     
     Returns:
-        df_cleaned: DataFrame harga aset yang lolos kualifikasi dengan NaN yang sudah di-interpolate/ffill.
-        valid_tickers: List ticker yang lolos kualifikasi.
+        df_cleaned: Cleaned asset prices DataFrame containing only valid assets, with NaN gaps filled.
+        valid_tickers: List of tickers that passed validation.
     """
     if df_prices.empty:
-        logger.error("DataFrame input kosong, tidak ada data untuk divalidasi.")
+        logger.error("Empty input DataFrame. No data to validate.")
         return pd.DataFrame(), []
 
     total_rows = len(df_prices)
@@ -24,45 +24,45 @@ def validate_assets(df_prices: pd.DataFrame, min_coverage: float = 0.95) -> tupl
 
     for col in df_prices.columns:
         series = df_prices[col]
-        # 1. Hitung coverage data
+        # 1. Calculate data coverage
         valid_count = series.notna().sum()
         coverage = valid_count / total_rows
         
-        # 2. Cek apakah sudah terdaftar di awal periode (listing > 3 tahun dari akhir 2024)
-        # Indeks pertama harus tidak NaN, atau setidaknya di awal-awal (misal 5% baris pertama)
+        # 2. Check if the asset was listed at the start of the period (listing history > 3 years)
+        # First valid index must not be NaN, or must be near the start (e.g. within first 5% of rows)
         first_valid_idx = series.first_valid_index()
         is_listed_long_enough = False
         if first_valid_idx is not None:
             first_valid_pos = df_prices.index.get_loc(first_valid_idx)
-            # Harus terdaftar di 5% baris pertama dari rentang waktu
+            # Must be listed within the first 5% of rows in the time period
             if first_valid_pos <= int(total_rows * 0.05):
                 is_listed_long_enough = True
 
-        # Evaluasi kelayakan
+        # Evaluate eligibility
         if coverage >= min_coverage and is_listed_long_enough:
             valid_tickers.append(col)
         else:
             reason = []
             if coverage < min_coverage:
-                reason.append(f"coverage rendah ({coverage*100:.1f}%)")
+                reason.append(f"low coverage ({coverage*100:.1f}%)")
             if not is_listed_long_enough:
-                reason.append("listing kurang dari 3 tahun (baru IPO)")
-            rejected_reasons[col] = " dan ".join(reason)
+                reason.append("listed for less than 3 years (recent IPO)")
+            rejected_reasons[col] = " and ".join(reason)
 
     if rejected_reasons:
         for ticker, reason in rejected_reasons.items():
-            logger.warning(f"Ticker {ticker} DI-REJECT karena: {reason}")
+            logger.warning(f"Ticker {ticker} REJECTED due to: {reason}")
             
-    logger.info(f"Hasil validasi: {len(valid_tickers)} / {len(df_prices.columns)} ticker lolos kualifikasi.")
+    logger.info(f"Validation results: {len(valid_tickers)} / {len(df_prices.columns)} tickers qualified.")
     
     if not valid_tickers:
-        logger.error("Tidak ada ticker yang memenuhi syarat validasi!")
+        logger.error("No tickers met the validation criteria!")
         return pd.DataFrame(), []
 
-    # Filter DataFrame hanya untuk kolom yang lolos
+    # Filter DataFrame to columns that passed
     df_filtered = df_prices[valid_tickers].copy()
     
-    # Isi missing values (jika ada celah libur kecil) dengan forward fill kemudian backward fill
+    # Fill small missing gaps (e.g., market holidays) with forward fill followed by backward fill
     df_cleaned = df_filtered.ffill().bfill()
     
     return df_cleaned, valid_tickers

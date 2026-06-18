@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { 
   Dna, Wallet, Shield, Scale, Bolt, Sliders, Calendar, 
   Cpu, Play, BarChart3, AlertTriangle, ShieldCheck, 
-  TrendingUp, BarChart, Trophy, Activity, RefreshCw, Info 
+  TrendingUp, BarChart, Trophy, Activity, RefreshCw, Info,
+  Gauge
 } from "lucide-react";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from "chart.js";
 import { Doughnut, Bar } from "react-chartjs-2";
@@ -25,11 +26,11 @@ export default function Home() {
   const [portfolioData, setPortfolioData] = useState(null);
   const [benchmarkData, setBenchmarkData] = useState(null);
 
-  // Palette warna chart untuk aset
+  // Asset chart colors palette
   const palette = [
-    "#10b981", // Deposito (Emerald)
-    "#06b6d4", // SBN ORI (Cyan)
-    "#f59e0b", // Emas (Amber)
+    "#10b981", // Time Deposit (Emerald)
+    "#06b6d4", // Government Bonds SBN (Cyan)
+    "#f59e0b", // Gold (Amber)
     "#8b5cf6", // Violet
     "#ec4899", // Pink
     "#f97316", // Orange
@@ -42,7 +43,7 @@ export default function Home() {
     "#ef4444"  // Red
   ];
 
-  // Handler optimasi portofolio
+  // Portfolio optimization handler
   const handleOptimize = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -67,14 +68,14 @@ export default function Home() {
         alert("Error: " + result.message);
       }
     } catch (error) {
-      console.error("Gagal optimasi:", error);
-      alert("Terjadi kesalahan saat memproses optimasi. Pastikan Flask server menyala.");
+      console.error("Optimization failed:", error);
+      alert("Failed to connect to the API server. Please make sure the FastAPI server is running.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Handler jalankan benchmark
+  // Benchmark execution handler
   const handleBenchmark = async () => {
     setBenchmarking(true);
     setBenchmarkData(null);
@@ -90,14 +91,14 @@ export default function Home() {
         alert("Error: " + result.message);
       }
     } catch (error) {
-      console.error("Gagal benchmark:", error);
-      alert("Terjadi kesalahan saat menjalankan benchmark.");
+      console.error("Benchmark failed:", error);
+      alert("An error occurred while running the performance benchmark.");
     } finally {
       setBenchmarking(false);
     }
   };
 
-  // Setup data untuk Pie Chart Alokasi Aset
+  // Setup data for Asset Allocation Doughnut Chart
   const getAllocationChartData = () => {
     if (!portfolioData) return null;
     
@@ -112,14 +113,14 @@ export default function Home() {
           data,
           backgroundColor: backgroundColors,
           borderWidth: 2,
-          borderColor: "#0f172a", // Tailwind slate-900
+          borderColor: "#0f172a", // Slate-900
           hoverOffset: 4
         }
       ]
     };
   };
 
-  // Setup data untuk Bar Chart Hasil Benchmark
+  // Setup data for Benchmark Bar Chart
   const getBenchmarkChartData = () => {
     if (!benchmarkData) return null;
     
@@ -148,7 +149,7 @@ export default function Home() {
       labels,
       datasets: [
         {
-          label: "Waktu Eksekusi (Detik)",
+          label: "Execution Time (Seconds)",
           data,
           backgroundColor: barColors.slice(0, labels.length),
           borderColor: borderColors.slice(0, labels.length),
@@ -158,7 +159,7 @@ export default function Home() {
     };
   };
 
-  // Ambil waktu tercepat dari benchmark
+  // Get the fastest method execution time
   const getFastestBenchmarkTime = () => {
     if (!benchmarkData) return null;
     const validTimes = benchmarkData.filter(d => d["Time (s)"] !== null && !isNaN(d["Time (s)"]));
@@ -195,41 +196,41 @@ export default function Home() {
         {/* Input Configuration Panel */}
         <section className="glass-panel rounded-2xl p-6 md:p-8">
           <h2 className="text-xl font-bold flex items-center gap-3 mb-6">
-            <Sliders className="h-5 w-5 text-purple-500" /> Pengaturan Portofolio
+            <Sliders className="h-5 w-5 text-purple-500" /> Portfolio Settings
           </h2>
           
           <form onSubmit={handleOptimize} className="flex flex-col gap-6">
-            {/* Modal & Profil Risiko */}
+            {/* Capital & Risk Profile */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
               {/* Nominal Modal */}
               <div className="md:col-span-1 flex flex-col gap-2">
                 <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-purple-400" /> Modal Investasi (Rp)
+                  <Wallet className="h-4 w-4 text-purple-400" /> Investment Capital
                 </label>
                 <div className="relative flex items-center">
-                  <span className="absolute left-4 text-gray-500 font-bold text-lg">Rp</span>
+                  <span className="absolute left-4 text-gray-500 font-bold text-lg">IDR</span>
                   <input 
                     type="number" 
                     value={capital}
                     onChange={(e) => setCapital(parseFloat(e.target.value))}
                     min="100000"
                     step="100000"
-                    className="w-full bg-[#090d16] border border-gray-700/60 rounded-xl py-3 pl-12 pr-4 text-lg font-bold text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
+                    className="w-full bg-[#090d16] border border-gray-700/60 rounded-xl py-3 pl-14 pr-4 text-lg font-bold text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all"
                     required
                   />
                 </div>
-                <span className="text-xs text-gray-500">Contoh: 5.000.000 (Lima Juta Rupiah)</span>
+                <span className="text-xs text-gray-500">E.g., 5,000,000 (Five Million Rupiah)</span>
               </div>
 
               {/* Profil Risiko */}
               <div className="md:col-span-2 flex flex-col gap-2">
                 <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-purple-400" /> Profil Risiko
+                  <ShieldCheck className="h-4 w-4 text-purple-400" /> Risk Profile
                 </label>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Card Aman */}
+                  {/* Card Conservative */}
                   <div 
                     onClick={() => setRiskProfile("aman")}
                     className={`flex flex-col p-4 rounded-xl cursor-pointer border transition-all hover:-translate-y-0.5 ${
@@ -239,11 +240,11 @@ export default function Home() {
                     }`}
                   >
                     <Shield className="h-6 w-6 text-emerald-500 mb-2" />
-                    <span className="font-bold text-sm">Aman</span>
-                    <span className="text-xs text-gray-400 mt-1">Saham maks 20%, Deposito/SBN min 60%</span>
+                    <span className="font-bold text-sm">Conservative</span>
+                    <span className="text-xs text-gray-400 mt-1">Stocks max 20%, Cash/Bonds min 60%</span>
                   </div>
 
-                  {/* Card Seimbang */}
+                  {/* Card Moderate */}
                   <div 
                     onClick={() => setRiskProfile("seimbang")}
                     className={`flex flex-col p-4 rounded-xl cursor-pointer border transition-all hover:-translate-y-0.5 ${
@@ -253,11 +254,11 @@ export default function Home() {
                     }`}
                   >
                     <Scale className="h-6 w-6 text-amber-500 mb-2" />
-                    <span className="font-bold text-sm">Seimbang</span>
-                    <span className="text-xs text-gray-400 mt-1">Saham maks 50%, Deposito/SBN min 30%</span>
+                    <span className="font-bold text-sm">Moderate</span>
+                    <span className="text-xs text-gray-400 mt-1">Stocks max 50%, Cash/Bonds min 30%</span>
                   </div>
 
-                  {/* Card Agresif */}
+                  {/* Card Aggressive */}
                   <div 
                     onClick={() => setRiskProfile("agresif")}
                     className={`flex flex-col p-4 rounded-xl cursor-pointer border transition-all hover:-translate-y-0.5 ${
@@ -267,33 +268,33 @@ export default function Home() {
                     }`}
                   >
                     <Bolt className="h-6 w-6 text-red-500 mb-2" />
-                    <span className="font-bold text-sm">Agresif</span>
-                    <span className="text-xs text-gray-400 mt-1">Saham maks 80%, Deposito/SBN min 10%</span>
+                    <span className="font-bold text-sm">Aggressive</span>
+                    <span className="text-xs text-gray-400 mt-1">Stocks max 80%, Cash/Bonds min 10%</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Durasi & Engine */}
+            {/* Duration & Engine */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-purple-400" /> Jangka Waktu Investasi
+                  <Calendar className="h-4 w-4 text-purple-400" /> Investment Duration
                 </label>
                 <select 
                   value={duration}
                   onChange={(e) => setDuration(parseInt(e.target.value))}
                   className="w-full bg-[#090d16] border border-gray-700/60 rounded-xl p-3 font-semibold text-gray-100 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition-all cursor-pointer"
                 >
-                  <option value="1">1 Tahun</option>
-                  <option value="3">3 Tahun</option>
-                  <option value="5">5 Tahun</option>
+                  <option value="1">1 Year</option>
+                  <option value="3">3 Years</option>
+                  <option value="5">5 Years</option>
                 </select>
               </div>
 
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                  <Cpu className="h-4 w-4 text-purple-400" /> Engine Komputasi Paralel
+                  <Cpu className="h-4 w-4 text-purple-400" /> Computation Engine
                 </label>
                 <select 
                   value={engineMode}
@@ -318,12 +319,12 @@ export default function Home() {
                 {loading ? (
                   <>
                     <RefreshCw className="h-5 w-5 animate-spin" />
-                    <span>Mengoptimasi Portofolio...</span>
+                    <span>Optimizing Portfolio...</span>
                   </>
                 ) : (
                   <>
                     <Play className="h-5 w-5 fill-current" />
-                    <span>Optimasi Portofolio</span>
+                    <span>Optimize Portfolio</span>
                   </>
                 )}
               </button>
@@ -337,12 +338,12 @@ export default function Home() {
                 {benchmarking ? (
                   <>
                     <RefreshCw className="h-5 w-5 animate-spin" />
-                    <span>Menguji Performa...</span>
+                    <span>Benchmarking...</span>
                   </>
                 ) : (
                   <>
                     <BarChart3 className="h-5 w-5" />
-                    <span>Jalankan Benchmark 6 Metode</span>
+                    <span>Run 6-Method Benchmark</span>
                   </>
                 )}
               </button>
@@ -354,8 +355,8 @@ export default function Home() {
         {loading && (
           <div className="glass-panel rounded-2xl p-10 flex flex-col items-center justify-center text-center gap-4 animate-pulse">
             <Dna className="h-16 w-16 text-purple-500 animate-spin" />
-            <h3 className="text-xl font-bold">Kecerdasan Genetika Sedang Berproses...</h3>
-            <p className="text-sm text-gray-400 max-w-md">Mengevaluasi populasi 1.000 portofolio dan melakukan seleksi mutasi di hardware akselerasi Anda.</p>
+            <h3 className="text-xl font-bold">Genetic Algorithm Processing...</h3>
+            <p className="text-sm text-gray-400 max-w-md">Simulating and evaluating thousands of portfolio configurations using parallel execution.</p>
           </div>
         )}
 
@@ -364,10 +365,10 @@ export default function Home() {
           <section className="flex flex-col gap-6">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-gray-800 pb-4">
               <h2 className="text-2xl font-extrabold flex items-center gap-3">
-                <BarChart className="h-6 w-6 text-emerald-500" /> Hasil Rekomendasi Portofolio
+                <BarChart className="h-6 w-6 text-emerald-500" /> Recommended Portfolio Allocation
               </h2>
               <span className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 font-bold text-lg">
-                Modal: {portfolioData.capital}
+                Capital: {portfolioData.capital}
               </span>
             </div>
 
@@ -381,7 +382,7 @@ export default function Home() {
                     <TrendingUp className="h-6 w-6" />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Proyeksi Keuntungan</span>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Projected Return</span>
                     <h4 className="text-2xl font-black text-emerald-400 mt-1">{portfolioData.return.percentage}</h4>
                     <p className="text-sm text-gray-400 mt-2 leading-relaxed">{portfolioData.return.description}</p>
                   </div>
@@ -393,7 +394,7 @@ export default function Home() {
                     <Activity className="h-6 w-6" />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tingkat Naik-Turun (Risiko)</span>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Portfolio Risk (Volatility)</span>
                     <h4 className="text-2xl font-black text-amber-400 mt-1">
                       {portfolioData.volatility.percentage} <span className="text-sm font-bold text-gray-500">({portfolioData.volatility.label})</span>
                     </h4>
@@ -407,7 +408,7 @@ export default function Home() {
                     <AlertTriangle className="h-6 w-6" />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Risiko Penurunan Terburuk</span>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Worst-case Drop (Drawdown)</span>
                     <h4 className="text-2xl font-black text-red-400 mt-1">
                       {portfolioData.drawdown.percentage} <span className="text-sm font-bold text-gray-500">({portfolioData.drawdown.nominal})</span>
                     </h4>
@@ -421,7 +422,7 @@ export default function Home() {
                     <Trophy className="h-6 w-6" />
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Kelayakan Investasi (Sharpe)</span>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Investment Efficiency (Sharpe)</span>
                     <h4 className="text-2xl font-black text-cyan-400 mt-1">
                       {portfolioData.sharpe.value} <span className="text-sm font-bold text-gray-500">({portfolioData.sharpe.label})</span>
                     </h4>
@@ -433,7 +434,7 @@ export default function Home() {
 
               {/* Chart card */}
               <div className="glass-panel rounded-xl p-6 flex flex-col gap-6">
-                <h3 className="text-lg font-bold">Rekomendasi Alokasi Tabungan & Investasi</h3>
+                <h3 className="text-lg font-bold">Recommended Allocation Breakdown</h3>
                 <div className="relative h-64 w-full flex justify-center items-center">
                   <Doughnut 
                     data={getAllocationChartData()}
@@ -481,7 +482,7 @@ export default function Home() {
             <div className="glass-panel rounded-xl p-6 bg-purple-950/10 border-purple-500/25 flex items-center gap-5 mt-4">
               <Dna className="h-10 w-10 text-purple-400 flex-shrink-0 animate-pulse" />
               <div>
-                <h4 className="font-bold text-purple-400 text-sm">Genetika Komputerisasi (GA Insight)</h4>
+                <h4 className="font-bold text-purple-400 text-sm">Genetic Algorithm Insight</h4>
                 <p className="text-xs text-gray-400 mt-1 leading-relaxed">{portfolioData.ga_insight.insight}</p>
               </div>
             </div>
@@ -493,9 +494,9 @@ export default function Home() {
           <section className="flex flex-col gap-6">
             <div className="border-b border-gray-800 pb-4">
               <h2 className="text-2xl font-extrabold flex items-center gap-3">
-                <Gauge className="h-6 w-6 text-purple-500" /> Hasil Benchmark Kecepatan
+                <Gauge className="h-6 w-6 text-purple-500" /> Computation Speed Benchmark
               </h2>
-              <p className="text-sm text-gray-500 mt-1">Membandingkan durasi kalkulasi Sharpe Ratio populasi portofolio masif.</p>
+              <p className="text-sm text-gray-500 mt-1">Comparing computational times of Sharpe Ratio evaluations for a population of 1,000 portfolios.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -505,9 +506,9 @@ export default function Home() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-gray-800">
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Metode Eksekusi</th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Waktu Eksekusi</th>
-                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Akselerasi (Speedup)</th>
+                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Execution Method</th>
+                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Execution Time</th>
+                        <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Speedup Factor</th>
                         <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Optimal Sharpe</th>
                       </tr>
                     </thead>
@@ -544,7 +545,7 @@ export default function Home() {
 
               {/* Bar Chart */}
               <div className="glass-panel rounded-xl p-6 flex flex-col justify-between min-h-[300px]">
-                <h3 className="text-md font-bold mb-4">Perbandingan Waktu Eksekusi (Detik)</h3>
+                <h3 className="text-md font-bold mb-4">Execution Time Comparison (Seconds)</h3>
                 <div className="relative flex-1">
                   <Bar 
                     data={getBenchmarkChartData()}
@@ -569,7 +570,7 @@ export default function Home() {
                   />
                 </div>
                 <div className="text-center text-xs text-gray-500 mt-4 flex items-center justify-center gap-1.5">
-                  <Info className="h-3.5 w-3.5" /> Waktu eksekusi lebih kecil menandakan performa komputasi lebih cepat.
+                  <Info className="h-3.5 w-3.5" /> * Lower execution times indicate faster parallel computation.
                 </div>
               </div>
             </div>

@@ -1,5 +1,5 @@
 # Product Requirements Document (PRD)
-## Portfolio Optimizer — Paralel Computing Project
+## Portfolio Optimizer — Parallel Computing Project
 **Version:** 1.0 | **Date:** June 2026
 
 ---
@@ -7,268 +7,210 @@
 ## 1. Overview
 
 ### Problem Statement
-Orang awam bingung mengalokasikan uang ke instrumen investasi yang tepat (deposito, SBN, saham, emas). Keputusan investasi sering dibuat tanpa analisis kuantitatif karena toolnya terlalu teknis.
+Average retail investors struggle to allocate capital to suitable investment assets (time deposits, government bonds, stocks, gold). Most existing portfolio optimization tools are too mathematical or technical, preventing standard users from utilizing them effectively.
 
 ### Solution
-Aplikasi optimasi portfolio multi-aset menggunakan Genetic Algorithm yang dipercepat dengan komputasi paralel (PySpark & CUDA), dengan output yang dapat dimengerti orang awam.
+An interactive multi-asset portfolio optimization web application using a Genetic Algorithm (GA) accelerated by parallel computing architectures (PySpark & CUDA), displaying layman-friendly outputs.
 
 ### Academic Goal
-Membuktikan secara empiris bahwa komputasi paralel lebih cepat dari sekuensial untuk evaluasi portfolio masif, dengan hasil yang tetap sama.
+Empirically demonstrate that parallel computing frameworks are significantly faster than sequential execution for evaluating massive portfolio options while yielding identical numerical results.
 
 ---
 
-## 2. Target User
+## 2. Target Users
 
-| User | Kebutuhan |
+| User Category | Needs & Use Cases |
 |---|---|
-| Mahasiswa (akademik) | Lihat perbandingan sekuensial vs paralel |
-| Orang awam (end user) | "Uang 5 juta saya taruh dimana?" |
-| Dosen penilai | Bukti teknis GA + PySpark + CUDA terintegrasi |
+| Students / Researchers | Inspect execution time comparisons across Sequential vs. PySpark vs. CUDA GPU |
+| Retail Investors | Quick answers to: "Where should I invest my IDR 5 million capital?" |
+| Evaluators / Professors | Technical proof of integrated GA + PySpark + CUDA code functionality |
 
 ---
 
 ## 3. Scoring Criteria
 
-| Komponen | Poin |
+| Component | Weight |
 |---|---|
-| PySpark (query, map, reduce, filter) | Base score |
-| Perbandingan execution time | Wajib |
-| CUDA dengan grid & thread | +20 bonus |
-| Video 5 menit jelas & subtitle | Wajib |
-| **Total maksimal** | **170 poin** |
+| PySpark operations (SQL, map, reduce, filter) | Base score |
+| High-precision execution time benchmark | Mandatory |
+| CUDA with explicit grid and thread dimensions | +20 bonus points |
+| 5-minute explanation video | Mandatory |
+| **Maximum Score** | **170 points** |
 
 ---
 
-## 4. Data
+## 4. Data Layer
 
-### Sumber Data (Dynamic, bukan hardcoded)
+### Data Sources (Dynamic Fetching)
+- **IDX Stocks:** `yfinance` (suffix `.JK`)
+- **Gold:** `yfinance` (`ANTM.JK` or global ticker `GC=F` as fallback)
+- **Time Deposits:** Web scraping the BI Rate from Bank Indonesia
+- **Government Bonds (SBN):** Web scraping indices from DJPPR/CNBC Indonesia
 
-- **Saham IDX** → yfinance (suffix `.JK`)
-- **Emas** → yfinance (`ANTM.JK` / `GC=F`)
-- **Deposito** → BI Rate API (real-time)
-- **SBN / ORI** → DJPPR API (real-time)
+### Asset Universe
+- **Stocks:** LQ45 index constituents (~25 stable stocks with sufficient listing history)
+- **Fixed Income:** BI-rate Time Deposits, 10-Year SBN ORI Government Bonds
+- **Commodities:** Gold Bullion
 
-### Universe Aset
-
-- **Saham:** LQ45 / IDX30 (auto-fetch, ~20-30 saham)
-- **Fixed:** Deposito, SBN ORI
-- **Komoditas:** Emas
-
-### Validasi Data
-
-- Filter saham listing < 5 tahun
-- Filter coverage data < 95%
-- Periode: 2022–2024 (post-COVID, 3 tahun)
-- Exclude periode anomali ekstrem
+### Data Validation & Filters
+- Exclude stocks listed for less than 3 years (avoid survivorship bias)
+- Exclude stocks with data coverage < 95%
+- Time period: 2022-01-01 to 2024-12-31 (3 years post-COVID stabilization)
+- Automate clean fills (forward and backward fill) for holiday gaps
 
 ---
 
-## 5. Arsitektur Sistem
+## 5. System Architecture
 
 ```
-USER INPUT
-(modal, profil risiko, durasi)
-        │
-        ▼
-DATA LAYER
-(yfinance + BI API + DJPPR + Cache)
-        │
-        ▼
-PYSPARK ENGINE
-(ETL + SQL + map + reduce + filter)
-        │
-        ▼
-BENCHMARK RUNNER  ← inti akademis
-├── Sekuensial Python
-├── PySpark CPU
-├── CUDA GPU
-└── PySpark + CUDA (gabungan)
-        │
-        ▼
-GA OPTIMIZER
-(populasi, seleksi, crossover, mutasi)
-fitness function → pakai CUDA
-        │
-        ▼
-BACKEND FLASK
-(format hasil → bahasa awam)
-        │
-        ▼
-FRONTEND WEB UI
-(form input + hasil + grafik)
+                 USER INPUT
+        (Capital, Risk Profile, Duration)
+                     │
+                     ▼
+                 DATA LAYER
+      (yfinance + BI Scraping + DJPPR Cache)
+                     │
+                     ▼
+               PYSPARK ENGINE
+      (ETL + SQL + map + reduce + filter)
+                     │
+                     ▼
+             BENCHMARK RUNNER
+    (Sequential vs. Spark vs. CUDA vs. Hybrid)
+                     │
+                     ▼
+                GA OPTIMIZER
+     (Population, Cross, Mutate, Elite)
+         (Fitness evaluated via GPU/CPU)
+                     │
+                     ▼
+              FASTAPI BACKEND
+        (Formats metrics to layman terms)
+                     │
+                     ▼
+              FRONTEND WEB UI
+     (Next.js Dashboard + Charts.js)
 ```
 
 ---
 
-## 6. Komponen Teknis
+## 6. Technical Components
 
-### 6.1 PySpark (Wajib)
+### 6.1 PySpark Parallelization (Required)
 
-| API | Fungsi |
+| Operation | Implementation & Purpose |
 |---|---|
-| SparkSession SQL | Query return & statistik historis per aset |
-| RDD map | Hitung Sharpe Ratio tiap kombinasi portfolio |
-| RDD filter | Buang portfolio tidak memenuhi constraint |
-| RDD reduce | Cari portfolio terbaik dari seluruh populasi |
+| SparkSession SQL | Querying mean historical returns and standard deviation |
+| RDD map | Computing Sharpe Ratio and risk boundaries for each portfolio candidate |
+| RDD filter | Pruning portfolios violating user risk boundaries |
+| RDD reduce | Finding the absolute highest Sharpe Ratio portfolio from the population |
 
-### 6.2 CUDA (Bonus +20)
+### 6.2 CUDA Acceleration (Bonus +20)
 
-| Kernel | Fungsi |
+| Kernel function | Description |
 |---|---|
-| `covarianceMatrix` | Hitung korelasi antar aset (grid 2D) |
-| `evaluateAllPortfolios` | Evaluasi 100K portfolio serentak |
-| `monteCarloSimulation` | Simulasi return masa depan |
+| `covariance_kernel` | Computing asset return covariances in a 2D grid block |
+| `evaluate_portfolios_kernel` | Evaluating Sharpe ratios for the entire 1,000+ population in parallel |
+| `monte_carlo_simulation_kernel` | Simulating asset growth paths for future projections |
 
-Grid & thread wajib eksplisit:
+Thread and grid configuration must be explicitly set:
 ```c
 int blocks  = (n_portfolios + 255) / 256;
 int threads = 256;
 kernel<<<blocks, threads>>>(args);
 ```
 
-### 6.3 Genetic Algorithm
+### 6.3 Genetic Algorithm Configuration
 
-| Komponen | Detail |
+| Property | Setting / Methodology |
 |---|---|
-| Individu | Array bobot alokasi per aset |
-| Populasi | 1000 individu |
-| Generasi | 500 |
-| Fitness | Sharpe Ratio (via CUDA) |
-| Crossover | Blend weights dua individu |
-| Mutasi | Random shift bobot kecil |
-| Constraint | Min invest, max per aset, profil risiko |
+| Individual | Vector of weights summing up to 1.0 |
+| Population Size | 1000 portfolios |
+| Generations | 500 generations |
+| Fitness Score | Sharpe Ratio (computed on CPU or GPU backend) |
+| Crossover | Vector arithmetic blend |
+| Mutation | Gaussian noise random shifting |
+| Constraints | Risk profiles, minimum allocation boundary, maximum allocation boundary |
 
-### 6.4 PySpark + CUDA (Gabungan, Bonus)
+### 6.4 PySpark + CUDA Hybrid Approach
 
 ```
-PySpark partisi data
-    ↓
-Tiap partition → CuPy evaluate di GPU
-    ↓
-Collect & reduce hasil
+PySpark partition weights list
+              ↓
+Each Partition → evaluates using CuPy on GPU worker nodes
+              ↓
+Collect & reduce outputs back to driver node
 ```
 
-> Catatan: Bukan yang tercepat, tapi paling scalable untuk data sangat besar.
+*Note:* PySpark + CUDA hybrid has some overhead on communication but scales best for massive distributed datasets.
 
 ---
 
-## 7. Benchmark (Inti Akademis)
+## 7. High-Precision Benchmarking
 
-### Operasi yang Dibandingkan
-> Evaluasi Sharpe Ratio untuk **1000 kombinasi portfolio** — operasi identik, cara berbeda.
+Benchmark operation: Sharpe Ratio evaluation for **1000 portfolios** under identical mathematical requirements.
 
-| # | Metode | Ekspektasi Waktu | Speedup |
+| Method ID | Method Name | Execution Time Expectation | Speedup |
 |---|---|---|---|
-| 1 | Sekuensial Python (for loop) | ~45 detik | 1x (baseline) |
-| 2 | PySpark SQL Query | ~8 detik | ~5.6x |
-| 3 | PySpark RDD map | ~5 detik | ~8.7x |
-| 4 | PySpark RDD filter + reduce | ~4.8 detik | ~9.4x |
-| 5 | CUDA murni | ~0.3 detik | ~150x |
-| 6 | PySpark + CUDA (CuPy) | ~1.5 detik | ~30x |
+| 1 | Sequential Python (For Loop) | ~45 seconds | 1.0x (Baseline) |
+| 2 | PySpark SQL Query | ~8 seconds | ~5.6x |
+| 3 | PySpark RDD map | ~5 seconds | ~8.7x |
+| 4 | PySpark RDD filter + reduce | ~4.8 seconds | ~9.4x |
+| 5 | Pure CUDA (GPU) | ~0.3 seconds | ~150.0x |
+| 6 | PySpark + CUDA Hybrid | ~1.5 seconds | ~30.0x |
 
-**Hasil semua metode: SAMA ✅**
+**Verification Rule: Best Sharpe values and return outputs must match exactly across all backends! ✅**
 
 ---
 
-## 8. User Experience
+## 8. User Experience & Translation
 
-### Input (Orang Awam)
-- Modal investasi (Rp)
-- Profil risiko: Aman / Seimbang / Agresif
-- Jangka waktu: <1 tahun / 1–3 tahun / >3 tahun
+### User Inputs
+- Investment Capital (IDR)
+- Risk Profile: Conservative (Safe) / Moderate (Balanced) / Aggressive
+- Jangka Waktu (Duration): 1 Year / 3 Years / 5 Years
 
-### Output (Bahasa Awam)
+### Output Formatting (Layman Terms)
 
-| Teknis | Bahasa Awam |
+| Technical Representation | Layman Conversion |
 |---|---|
-| Bobot 0.40 | "Taruh Rp 2 juta di Deposito" |
-| Return 8.3% | "Estimasi 3 tahun jadi Rp 6.4 juta" |
-| Max drawdown 6% | "Paling berat bisa turun Rp 300rb" |
-| GA 500 generasi | "Komputer coba 100.000 kombinasi" |
-| Sharpe Ratio | "Seberapa worth it risikonya" |
-| Volatilitas | "Seberapa naik-turun harganya" |
+| Asset Weight: 0.40 | "Invest IDR 2,000,000 in Time Deposits" |
+| Expected Return: 8.3% | "Estimated profit: +IDR 415,000 / year (IDR 6,400,000 total in 3 years)" |
+| Max Drawdown: 6% | "Worst-case historical temporary drop: IDR 300,000" |
+| GA 500 Generations | "Simulated over 100,000 portfolio combinations" |
+| Sharpe Ratio | "How worth it the return is compared to the risk" |
+| Volatility | "How much the price fluctuates up and down" |
 
 ---
 
-## 9. Struktur Folder
+## 9. Monorepo Structure
 
 ```
 portfolio-optimizer/
-├── frontend/
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
-├── backend/
-│   ├── app.py              # Flask API
-│   ├── orchestrator.py     # koordinasi semua layer
-│   └── formatter.py        # angka → bahasa awam
-├── data/
-│   ├── fetcher.py          # yfinance + BI + DJPPR
-│   ├── validator.py        # filter data tidak valid
-│   └── cache.py
-├── pyspark/
-│   ├── session.py          # SparkSession SQL
-│   └── context.py          # RDD map/reduce/filter
-├── cuda/
-│   ├── covariance.cu
-│   ├── montecarlo.cu
-│   └── evaluate.cu
-├── ga/
-│   ├── optimizer.py
-│   ├── fitness.py
-│   └── constraints.py
-├── benchmark/
-│   ├── sequential.py       # Python for loop
-│   ├── pyspark_bench.py    # map/reduce/filter
-│   ├── cuda_bench.cu       # GPU kernel
-│   └── runner.py           # jalankan & bandingkan
-└── results/
-    ├── benchmark.csv
-    ├── optimal_weights.json
-    └── charts/
+├── frontend/             # Next.js SPA Web App
+│   ├── app/              # Router, layouts, styles, and page component
+│   └── package.json
+├── backend/              # FastAPI Python Web API
+│   ├── app.py            # API controller & Uvicorn router
+│   ├── orchestrator.py   # Flow controller
+│   ├── formatter.py      # Technical-to-layman translation
+│   ├── data/             # fetcher, validator, cache
+│   ├── pyspark/          # session, context
+│   ├── cuda/             # kernels, fallback
+│   ├── ga/               # optimizer, fitness, constraints
+│   └── benchmark/        # runner.py
+└── results/              # Output CSV and config logs
 ```
 
 ---
 
-## 10. Video (5 Menit)
+## 10. Verification Metric Targets
 
-| Waktu | Konten |
+| Metric | Target |
 |---|---|
-| 0:00–0:40 | Hook: "Punya 5 juta, taruh dimana?" |
-| 0:40–1:30 | Penjelasan paralel: kenapa perlu? |
-| 1:30–2:30 | Demo benchmark: sekuensial vs PySpark vs CUDA |
-| 2:30–3:30 | Demo GA optimizer berjalan |
-| 3:30–4:30 | Output: rekomendasi alokasi + grafik |
-| 4:30–5:00 | Kesimpulan: hasil sama, waktu beda drastis |
-
-**Teknis video:**
-- Durasi: tepat 5 menit
-- Resolusi: minimal 720p
-- Suara: jelas / ada subtitle
-- Upload: YouTube atau Google Drive
-
----
-
-## 11. Metrik Keberhasilan
-
-| Metrik | Target |
-|---|---|
-| Semua metode hasil sama | ✅ wajib |
-| Speedup PySpark vs serial | minimal 3x |
-| Speedup CUDA vs serial | minimal 50x |
-| GA konvergen | Sharpe Ratio meningkat tiap generasi |
-| Data valid | coverage ≥ 95%, periode 2022–2024 |
-| UI bisa dipakai orang awam | input < 1 menit |
-
----
-
-## 12. Timeline
-
-| Minggu | Target |
-|---|---|
-| Minggu 1 | Data fetcher + validator |
-| Minggu 2 | PySpark pipeline + benchmark sekuensial |
-| Minggu 3 | CUDA kernel + benchmark |
-| Minggu 4 | GA optimizer + integrasi |
-| Minggu 5 | Frontend UI + Flask backend |
-| Minggu 6 | Video recording + submit |
+| Output Consistency | Sharpe differences across methods < $10^{-4}$ |
+| PySpark CPU Speedup | $\ge$ 3x speedup vs. sequential |
+| CUDA GPU Speedup | $\ge$ 50x speedup vs. sequential |
+| Convergence | Sharpe increase across generations |
+| Data Reliability | Coverage $\ge$ 95% over the 2022-2024 timeframe |
+| UX Simplicity | Full run takes less than 1 minute |

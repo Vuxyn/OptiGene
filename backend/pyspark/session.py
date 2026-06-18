@@ -7,12 +7,12 @@ _spark = None
 
 def get_spark_session(app_name: str = "OptiGene") -> SparkSession:
     """
-    Mengembalikan SparkSession singleton yang dikonfigurasi untuk local execution.
+    Returns a singleton SparkSession configured for local execution.
     """
     global _spark
     if _spark is None:
         try:
-            logger.info("Menginisialisasi SparkSession...")
+            logger.info("Initializing SparkSession...")
             _spark = SparkSession.builder \
                 .appName(app_name) \
                 .master("local[*]") \
@@ -21,24 +21,24 @@ def get_spark_session(app_name: str = "OptiGene") -> SparkSession:
                 .config("spark.ui.showConsoleProgress", "false") \
                 .getOrCreate()
             
-            # Matikan log level INFO dari PySpark agar output konsol bersih
+            # Mute INFO log level from PySpark to clean console output
             _spark.sparkContext.setLogLevel("WARN")
-            logger.info("SparkSession berhasil diinisialisasi.")
+            logger.info("SparkSession successfully initialized.")
         except Exception as e:
-            logger.error(f"Gagal menginisialisasi SparkSession: {e}")
+            logger.error(f"Failed to initialize SparkSession: {e}")
             raise e
     return _spark
 
 def stop_spark_session():
     """
-    Menghentikan SparkSession aktif.
+    Stops the active SparkSession.
     """
     global _spark
     if _spark is not None:
         try:
-            logger.info("Menghentikan SparkSession...")
+            logger.info("Stopping SparkSession...")
             _spark.stop()
             _spark = None
-            logger.info("SparkSession dihentikan.")
+            logger.info("SparkSession stopped.")
         except Exception as e:
-            logger.error(f"Gagal menghentikan SparkSession: {e}")
+            logger.error(f"Failed to stop SparkSession: {e}")

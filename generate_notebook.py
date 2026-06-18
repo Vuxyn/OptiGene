@@ -8,19 +8,19 @@ notebook_content = {
    "metadata": {},
    "source": [
     "# OptiGene — Jupyter Notebook Demo\n",
-    "### Mata Kuliah: Parallel Processing (Komputasi Paralel)\n",
+    "### Course: Parallel Processing (Komputasi Paralel)\n",
     "\n",
-    "Notebook ini mendemonstrasikan secara interaktif seluruh alur kerja proyek **OptiGene**:\n",
-    "1. **Data Layer**: Mengunduh data historis (yfinance) dan web scraping suku bunga (BI & SBN).\n",
-    "2. **Genetic Algorithm**: Mencari kombinasi portofolio optimal berdasarkan batasan risiko.\n",
-    "3. **Komputasi Paralel**: Menjalankan benchmark perbandingan performa 6 metode (Sekuensial Python, PySpark SQL, PySpark RDD map, PySpark RDD filter+reduce, CUDA GPU, dan PySpark + CUDA hybrid) serta visualisasi grafik *speedup* secara inline."
+    "This notebook interactively demonstrates the entire **OptiGene** workflow:\n",
+    "1. **Data Layer**: Downloading historical prices (yfinance) and web scraping interest rates (BI & SBN).\n",
+    "2. **Genetic Algorithm**: Searching for the optimal portfolio weights based on risk profile constraints.\n",
+    "3. **Parallel Computing**: Executing performance benchmarks comparing 6 methods (Sequential Python, PySpark SQL, PySpark RDD map, PySpark RDD filter+reduce, CUDA GPU, and PySpark + CUDA hybrid) and visualizing inline *speedup* charts."
    ]
   },
   {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 1. Verifikasi Lingkungan & Import Modul"
+    "## 1. Environment Verification & Module Imports"
    ]
   },
   {
@@ -35,7 +35,7 @@ notebook_content = {
     "import pandas as pd\n",
     "import matplotlib.pyplot as plt\n",
     "\n",
-    "# Masukkan folder root workspace ke PATH\n",
+    "# Include workspace root folder in python search path\n",
     "sys.path.append(os.path.abspath(\".\"))\n",
     "\n",
     "from backend.pyspark.session import get_spark_session\n",
@@ -43,9 +43,9 @@ notebook_content = {
     "from backend.orchestrator import optimize_portfolio_flow\n",
     "\n",
     "print(\"=== OPTIGENE ENVIRONMENT STATUS ===\")\n",
-    "print(f\"CUDA (GPU via CuPy) Tersedia: {CUDA_AVAILABLE}\")\n",
+    "print(f\"CUDA (GPU via CuPy) Available: {CUDA_AVAILABLE}\")\n",
     "\n",
-    "# Inisialisasi Spark secara inline\n",
+    "# Inline Spark session initialization\n",
     "spark = get_spark_session()\n",
     "print(f\"PySpark Version: {spark.version}\")"
    ]
@@ -54,8 +54,8 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 2. Scraping Data & Analisis Historis Aset\n",
-    "Kita mengambil data historis dari yfinance (saham LQ45 & emas) serta scraping data suku bunga BI Rate & SBN ORI terbaru."
+    "## 2. Data Scraping & Historical Asset Analysis\n",
+    "We fetch historical data from yfinance (LQ45 index constituents & gold) and scrape interest rates (latest BI Rate & 10Y SBN yields)."
    ]
   },
   {
@@ -70,16 +70,16 @@ notebook_content = {
     "bi_rate = fetch_bi_rate()\n",
     "sbn_rate = fetch_sbn_rate()\n",
     "\n",
-    "print(f\"Suku Bunga Deposito (BI Rate): {bi_rate * 100:.2f}%\")\n",
-    "print(f\"Suku Bunga SBN (DJPPR Yield 10Y): {sbn_rate * 100:.2f}%\")\n",
+    "print(f\"Time Deposit Interest Rate (BI Rate): {bi_rate * 100:.2f}%\")\n",
+    "print(f\"Government SBN Bond Yield (10Y): {sbn_rate * 100:.2f}%\")\n",
     "\n",
-    "# Muat cache harga historis\n",
+    "# Load historical price cache\n",
     "df_prices = load_prices_cache()\n",
     "if df_prices.empty:\n",
-    "    print(\"Cache kosong, silakan jalankan optimasi pertama untuk mengunduh data dari yfinance.\")\n",
+    "    print(\"Cache is empty, please run optimization flow once to download yfinance historical data.\")\n",
     "else:\n",
-    "    print(f\"\\nJumlah Aset Terdaftar: {len(df_prices.columns)} (Emas + Saham LQ45 lolos filter)\")\n",
-    "    print(\"\\nSampel Harga Historis (5 data pertama):\")\n",
+    "    print(f\"\\nNumber of Registered Assets: {len(df_prices.columns)} (Gold + LQ45 stocks passing validation)\")\n",
+    "    print(\"\\nHistorical Price Sample (First 5 records):\")\n",
     "    display(df_prices.head())"
    ]
   },
@@ -87,8 +87,8 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 3. Eksekusi Optimasi Portofolio (Genetic Algorithm)\n",
-    "Kita jalankan optimasi pencarian alokasi dana terbaik menggunakan Genetic Algorithm. Kita coba untuk profil risiko **Aman** dan **Agresif**."
+    "## 3. Portfolio Optimization Execution (Genetic Algorithm)\n",
+    "We run the Genetic Algorithm search to find the optimal portfolio allocation. We will run it for both **Safe (Conservative)** and **Aggressive** risk profiles."
    ]
   },
   {
@@ -97,20 +97,20 @@ notebook_content = {
    "metadata": {},
    "outputs": [],
    "source": [
-    "capital = 10000000.0 # Modal Rp 10.000.000\n",
+    "capital = 10000000.0 # Capital: IDR 10,000,000\n",
     "\n",
-    "# 1. Profil Risiko Aman (Maksimal Saham 20%)\n",
-    "print(\"\\n--- RUNNING GA OPTIMIZER: AMAN ---\")\n",
-    "res_safe = optimize_portfolio_flow(capital, \"aman\", duration_years=3, mode=\"numpy_vectorized\")\n",
-    "print(f\"Proyeksi Return: {res_safe['return']['percentage']}\")\n",
-    "print(f\"Tingkat Volatilitas (Risiko): {res_safe['volatility']['percentage']} ({res_safe['volatility']['label']})\")\n",
+    "# 1. Safe (Conservative) Risk Profile (Max Stock allocation 20%)\n",
+    "print(\"\\n--- RUNNING GA OPTIMIZER: SAFE (CONSERVATIVE) ---\")\n",
+    "res_safe = optimize_portfolio_flow(capital, \"safe\", duration_years=3, mode=\"numpy_vectorized\")\n",
+    "print(f\"Projected Return: {res_safe['return']['percentage']}\")\n",
+    "print(f\"Volatility Level (Risk): {res_safe['volatility']['percentage']} ({res_safe['volatility']['label']})\")\n",
     "print(f\"Sharpe Ratio: {res_safe['sharpe']['value']} ({res_safe['sharpe']['label']})\")\n",
     "\n",
-    "# 2. Profil Risiko Agresif (Maksimal Saham 80%)\n",
-    "print(\"\\n--- RUNNING GA OPTIMIZER: AGRESIF ---\")\n",
-    "res_agg = optimize_portfolio_flow(capital, \"agresif\", duration_years=3, mode=\"numpy_vectorized\")\n",
-    "print(f\"Proyeksi Return: {res_agg['return']['percentage']}\")\n",
-    "print(f\"Tingkat Volatilitas (Risiko): {res_agg['volatility']['percentage']} ({res_agg['volatility']['label']})\")\n",
+    "# 2. Aggressive Risk Profile (Max Stock allocation 80%)\n",
+    "print(\"\\n--- RUNNING GA OPTIMIZER: AGGRESSIVE ---\")\n",
+    "res_agg = optimize_portfolio_flow(capital, \"aggressive\", duration_years=3, mode=\"numpy_vectorized\")\n",
+    "print(f\"Projected Return: {res_agg['return']['percentage']}\")\n",
+    "print(f\"Volatility Level (Risk): {res_agg['volatility']['percentage']} ({res_agg['volatility']['label']})\")\n",
     "print(f\"Sharpe Ratio: {res_agg['sharpe']['value']} ({res_agg['sharpe']['label']})\")"
    ]
   },
@@ -118,8 +118,8 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "### Visualisasi Alokasi Dana (Pie Chart)\n",
-    "Mari kita visualisasikan ke mana uang Rp 10.000.000 tersebut harus ditempatkan berdasarkan profil **Aman** vs **Agresif**."
+    "### Capital Allocation Visualization (Pie Chart)\n",
+    "Let's visualize where the IDR 10,000,000 capital should be deployed based on the **Safe (Conservative)** vs **Aggressive** recommendations."
    ]
   },
   {
@@ -130,19 +130,19 @@ notebook_content = {
    "source": [
     "fig, axes = plt.subplots(1, 2, figsize=(16, 7))\n",
     "\n",
-    "# Subplot 1: Aman\n",
+    "# Subplot 1: Safe\n",
     "safe_alloc = res_safe[\"allocation\"]\n",
     "safe_labels = [item[\"asset\"] for item in safe_alloc]\n",
     "safe_sizes = [float(item[\"percentage\"].replace(\"%\", \"\")) for item in safe_alloc]\n",
     "axes[0].pie(safe_sizes, labels=safe_labels, autopct='%1.1f%%', startangle=140, shadow=True)\n",
-    "axes[0].set_title(\"Rekomendasi Portofolio: AMAN (Rp 10.000.000)\", fontsize=12, fontweight='bold')\n",
+    "axes[0].set_title(\"Portfolio Recommendation: SAFE (IDR 10,000,000)\", fontsize=12, fontweight='bold')\n",
     "\n",
-    "# Subplot 2: Agresif\n",
+    "# Subplot 2: Aggressive\n",
     "agg_alloc = res_agg[\"allocation\"]\n",
     "agg_labels = [item[\"asset\"] for item in agg_alloc]\n",
     "agg_sizes = [float(item[\"percentage\"].replace(\"%\", \"\")) for item in agg_alloc]\n",
     "axes[1].pie(agg_sizes, labels=agg_labels, autopct='%1.1f%%', startangle=140, shadow=True)\n",
-    "axes[1].set_title(\"Rekomendasi Portofolio: AGRESIF (Rp 10.000.000)\", fontsize=12, fontweight='bold')\n",
+    "axes[1].set_title(\"Portfolio Recommendation: AGGRESSIVE (IDR 10,000,000)\", fontsize=12, fontweight='bold')\n",
     "\n",
     "plt.tight_layout()\n",
     "plt.show()"
@@ -152,8 +152,8 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "## 4. Benchmark Performa Komputasi Paralel\n",
-    "Bagian inti akademik: Kita membandingkan 6 metode komputasi dalam mengevaluasi Sharpe Ratio 1000 kombinasi portofolio secara berurutan, dan memverifikasi presisi kesamaan hasilnya."
+    "## 4. Parallel Computing Performance Benchmarking\n",
+    "Core Academic Section: We compare 6 computational backends in evaluating Sharpe Ratios for 1,000 portfolio combinations, and verify the numeric consistency of the results."
    ]
   },
   {
@@ -164,7 +164,7 @@ notebook_content = {
    "source": [
     "from backend.benchmark.runner import run_benchmark\n",
     "\n",
-    "# 1. Persiapan matriks parameter\n",
+    "# 1. Setup benchmark matrices\n",
     "df_returns_dynamic = df_prices.pct_change().dropna()\n",
     "T_ret = len(df_returns_dynamic)\n",
     "deposito_daily_ret = bi_rate / 252.0\n",
@@ -194,8 +194,8 @@ notebook_content = {
     "    else:\n",
     "        P_rel[:, col_idx] = 1.0\n",
     "\n",
-    "# 2. Jalankan benchmark 6 metode\n",
-    "df_benchmark = run_benchmark(df_prices, mu, Sigma, P_rel, profile_name=\"seimbang\")\n",
+    "# 2. Run high-precision 6-method benchmark\n",
+    "df_benchmark = run_benchmark(df_prices, mu, Sigma, P_rel, profile_name=\"balanced\")\n",
     "display(df_benchmark)"
    ]
   },
@@ -203,8 +203,8 @@ notebook_content = {
    "cell_type": "markdown",
    "metadata": {},
    "source": [
-    "### Plot Perbandingan Waktu Eksekusi & Speedup\n",
-    "Mari kita visualisasikan akselerasi komputasi GPU & CPU paralel dibanding Sekuensial Python menggunakan diagram batang."
+    "### Execution Time & Speedup Comparison Plot\n",
+    "Let's visualize the computation speedup of GPU & parallel CPU backends compared to Sequential Python using a bar chart."
    ]
   },
   {
@@ -216,13 +216,13 @@ notebook_content = {
     "plt.figure(figsize=(12, 6))\n",
     "colors = ['#f87171', '#60a5fa', '#fbbf24', '#34d399', '#a78bfa', '#fb923c']\n",
     "\n",
-    "# Bar chart untuk waktu eksekusi\n",
+    "# Bar chart of execution times\n",
     "bars = plt.bar(df_benchmark[\"Method\"], df_benchmark[\"Time (s)\"], color=colors[:len(df_benchmark)])\n",
-    "plt.ylabel(\"Waktu Eksekusi (Detik)\", fontsize=11, fontweight='bold')\n",
-    "plt.title(\"Analisis Performa Komputasi: Waktu Eksekusi Portofolio (P=1.000)\", fontsize=13, fontweight='bold')\n",
+    "plt.ylabel(\"Execution Time (Seconds)\", fontsize=11, fontweight='bold')\n",
+    "plt.title(\"Computation Performance: Portfolio Evaluation Times (P=1,000)\", fontsize=13, fontweight='bold')\n",
     "plt.xticks(rotation=15)\n",
     "\n",
-    "# Berikan anotasi angka di atas bar\n",
+    "# Add numeric label on top of each bar\n",
     "for bar in bars:\n",
     "    yval = bar.get_height()\n",
     "    if not np.isnan(yval):\n",
@@ -232,7 +232,7 @@ notebook_content = {
     "plt.show()\n",
     "\n",
     "# Print resume speedup\n",
-    "print(\"\\n=== RESUME AKSELERASI PORTFOLIO EVALUATION ===\")\n",
+    "print(\"\\n=== ACCELERATION SPEEDUP RESUME ===\")\n",
     "for idx, row in df_benchmark.iterrows():\n",
     "    print(f\"{row['Method']}: {row['Time (s)']:.4f} s (Speedup: {row['Speedup']:.2f}x)\")"
    ]
@@ -249,22 +249,22 @@ notebook_content = {
    "codemirror_mode": {
     "name": "ipytext",
     "value": "hybrid"
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.12.3"
-  }
+  },
+  "file_extension": ".py",
+  "mimetype": "text/x-python",
+  "name": "python",
+  "nbconvert_exporter": "python",
+  "pygments_lexer": "ipython3",
+  "version": "3.12.3"
+ }
  },
  "nbformat": 4,
  "nbformat_minor": 2
 }
 
-# Tulis file notebook JSON
+# Write notebook JSON file
 notebook_path = "d:/INFORMATICS/SEMESTER 4/PARALLEL PROCESSING/Spark/OptiGene_Demo.ipynb"
 with open(notebook_path, "w") as f:
     json.dump(notebook_content, f, indent=1)
 
-print("Jupyter Notebook OptiGene_Demo.ipynb berhasil dibuat!")
+print("Jupyter Notebook OptiGene_Demo.ipynb successfully generated!")

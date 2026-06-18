@@ -14,18 +14,18 @@ __device__ float rand_float(unsigned int* seed) {
     return (float)(*seed) / (float)4294967295.0f;
 }
 
-// Box-Muller transform untuk menghasilkan angka acak distribusi normal standard
+// Box-Muller transform to generate standard normally distributed random numbers
 __device__ float rand_normal(unsigned int* seed) {
     float u1 = rand_float(seed);
     float u2 = rand_float(seed);
-    if (u1 < 1e-6f) u1 = 1e-6f; // cegah log(0)
+    if (u1 < 1e-6f) u1 = 1e-6f; // prevent log(0)
     return sqrtf(-2.0f * logf(u1)) * cosf(2.0f * 3.14159265f * u2);
 }
 
 // 1. Covariance Matrix Kernel (Grid 2D)
 __global__ void covariance_kernel(const float* R, const float* means, float* Sigma, int T, int N) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x; // Baris (aset i)
-    int j = blockIdx.y * blockDim.y + threadIdx.y; // Kolom (aset j)
+    int i = blockIdx.x * blockDim.x + threadIdx.x; // Row (asset i)
+    int j = blockIdx.y * blockDim.y + threadIdx.y; // Column (asset j)
     
     if (i < N && j < N) {
         float sum = 0.0f;
@@ -36,7 +36,7 @@ __global__ void covariance_kernel(const float* R, const float* means, float* Sig
             float diff_j = R[t * N + j] - mean_j;
             sum += diff_i * diff_j;
         }
-        // Disetahunkan dengan faktor 252 hari bursa
+        // Annualized by multiplying with 252 trading days
         Sigma[i * N + j] = (sum / (float)(T - 1)) * 252.0f;
     }
 }
@@ -47,7 +47,7 @@ __global__ void evaluate_portfolios_kernel(
     float* returns, float* volatilities, float* sharpe_ratios, 
     float rf_rate, int P, int N
 ) {
-    int p = blockIdx.x * blockDim.x + threadIdx.x; // Indeks portfolio
+    int p = blockIdx.x * blockDim.x + threadIdx.x; // Portfolio index
     if (p < P) {
         // expected return = sum(w_k * mu_k)
         float ret = 0.0f;
@@ -79,7 +79,7 @@ __global__ void monte_carlo_simulation_kernel(
     float start_val, float ret, float vol, float* paths, 
     int num_sims, int num_days, unsigned int base_seed
 ) {
-    int sim_idx = blockIdx.x * blockDim.x + threadIdx.x; // Indeks jalur simulasi
+    int sim_idx = blockIdx.x * blockDim.x + threadIdx.x; // Simulation path index
     if (sim_idx < num_sims) {
         unsigned int seed = base_seed + sim_idx;
         float dt = 1.0f / 252.0f; // daily time step
@@ -100,16 +100,16 @@ __global__ void monte_carlo_simulation_kernel(
 }
 """
 
-# Compile kernel secara global
+# Compile kernels globally
 try:
     module = cp.RawModule(code=CUDA_CODE)
     cov_kernel = module.get_function("covariance_kernel")
     eval_kernel = module.get_function("evaluate_portfolios_kernel")
     mc_kernel = module.get_function("monte_carlo_simulation_kernel")
-    logger.info("Kernel CUDA berhasil dikompilasi via CuPy.")
+    logger.info("CUDA kernels compiled successfully via CuPy.")
     CUDA_AVAILABLE = True
 except Exception as e:
-    logger.error(f"Gagal mengompilasi kernel CUDA: {e}")
+    logger.error(f"Failed to compile CUDA kernels: {e}")
     CUDA_AVAILABLE = False
     cov_kernel = None
     eval_kernel = None
@@ -117,29 +117,29 @@ except Exception as e:
 
 def gpu_compute_covariance(df_returns: np.ndarray, means: np.ndarray) -> np.ndarray:
     """
-    Menghitung matriks kovarians yang disetahunkan di GPU.
+    Computes the annualized covariance matrix on the GPU.
     """
     if not CUDA_AVAILABLE:
-        raise RuntimeError("CUDA tidak tersedia. Gunakan CPU fallback.")
+        raise RuntimeError("CUDA is not available. Use CPU fallback.")
         
     T, N = df_returns.shape
     
-    # Alokasi memory di GPU
+    # Allocate GPU memory
     d_R = cp.asarray(df_returns, dtype=cp.float32)
     d_means = cp.asarray(means, dtype=cp.float32)
     d_Sigma = cp.zeros((N, N), dtype=cp.float32)
     
-    # Tentukan grid & block size 2D
+    # Configure grid & block dimensions for 2D kernel
     threads_per_block = (16, 16)
     blocks_per_grid = (
         int((N + 15) / 16),
         int((N + 15) / 16)
     )
     
-    # Jalankan kernel
+    # Execute covariance kernel
     cov_kernel(blocks_per_grid, threads_per_block, (d_R, d_means, d_Sigma, T, N))
     
-    # Salin kembali ke CPU numpy array
+    # Copy results back to host (CPU) numpy array
     return cp.asnumpy(d_Sigma)
 
 def gpu_evaluate_portfolios(
@@ -149,14 +149,14 @@ def gpu_evaluate_portfolios(
     rf_rate: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Mengevaluasi seluruh portofolio dalam populasi secara paralel di GPU.
+    Evaluates the entire portfolio population in parallel on the GPU.
     """
     if not CUDA_AVAILABLE:
-        raise RuntimeError("CUDA tidak tersedia. Gunakan CPU fallback.")
+        raise RuntimeError("CUDA is not available. Use CPU fallback.")
         
     P, N = weights.shape
     
-    # Alokasi memory di GPU
+    # Allocate GPU memory
     d_W = cp.asarray(weights, dtype=cp.float32)
     d_mu = cp.asarray(mu, dtype=cp.float32)
     d_Sigma = cp.asarray(Sigma, dtype=cp.float32)
@@ -165,17 +165,17 @@ def gpu_evaluate_portfolios(
     d_volatilities = cp.zeros(P, dtype=cp.float32)
     d_sharpes = cp.zeros(P, dtype=cp.float32)
     
-    # Tentukan grid & block size 1D secara eksplisit
+    # Define explicit 1D grid & thread dimensions
     threads = 256
     blocks = int((P + 255) / 256)
     
-    # Jalankan kernel
+    # Execute portfolio evaluation kernel
     eval_kernel(
         (blocks,), (threads,), 
         (d_W, d_mu, d_Sigma, d_returns, d_volatilities, d_sharpes, np.float32(rf_rate), P, N)
     )
     
-    # Salin kembali ke CPU
+    # Copy results back to host (CPU)
     return cp.asnumpy(d_returns), cp.asnumpy(d_volatilities), cp.asnumpy(d_sharpes)
 
 def gpu_monte_carlo(
@@ -186,24 +186,24 @@ def gpu_monte_carlo(
     num_days: int = 252
 ) -> np.ndarray:
     """
-    Simulasi Monte Carlo di GPU untuk memproyeksikan nilai portofolio masa depan.
+    Runs Monte Carlo simulations on the GPU to project future portfolio values.
     """
     if not CUDA_AVAILABLE:
-        raise RuntimeError("CUDA tidak tersedia. Gunakan CPU fallback.")
+        raise RuntimeError("CUDA is not available. Use CPU fallback.")
         
-    # Alokasi output di GPU (num_sims x num_days)
+    # Allocate output paths matrix on the GPU (num_sims x num_days)
     d_paths = cp.zeros((num_sims, num_days), dtype=cp.float32)
     
-    # Tentukan grid & block size 1D
+    # Configure grid & block dimensions for 1D kernel
     threads = 256
     blocks = int((num_sims + 255) / 256)
     base_seed = np.random.randint(0, 1000000)
     
-    # Jalankan kernel
+    # Execute Monte Carlo simulation kernel
     mc_kernel(
         (blocks,), (threads,), 
         (np.float32(start_val), np.float32(ret), np.float32(vol), d_paths, num_sims, num_days, np.uint32(base_seed))
     )
     
-    # Salin kembali ke CPU
+    # Copy paths matrix back to host (CPU)
     return cp.asnumpy(d_paths)

@@ -13,54 +13,54 @@ def _ensure_cache_dir():
 
 def save_prices_cache(df_prices: pd.DataFrame, filename: str = "prices_cache.csv"):
     """
-    Menyimpan DataFrame harga aset ke file cache CSV.
+    Saves the asset prices DataFrame to a CSV cache file.
     """
     try:
         _ensure_cache_dir()
         path = os.path.join(CACHE_DIR, filename)
         df_prices.to_csv(path, index=True)
-        logger.info(f"Harga aset berhasil disimpan ke cache: {path}")
+        logger.info(f"Asset prices successfully cached to: {path}")
     except Exception as e:
-        logger.error(f"Gagal menyimpan cache harga: {e}")
+        logger.error(f"Failed to save asset price cache: {e}")
 
 def load_prices_cache(filename: str = "prices_cache.csv") -> pd.DataFrame:
     """
-    Memuat DataFrame harga aset dari cache CSV jika ada.
+    Loads the asset prices DataFrame from the CSV cache if it exists.
     """
     path = os.path.join(CACHE_DIR, filename)
     if os.path.exists(path):
         try:
             df = pd.read_csv(path, index_col=0, parse_dates=True)
-            logger.info(f"Berhasil memuat harga aset dari cache: {path}")
+            logger.info(f"Successfully loaded asset prices from cache: {path}")
             return df
         except Exception as e:
-            logger.error(f"Gagal membaca cache harga: {e}")
+            logger.error(f"Failed to read asset price cache: {e}")
     return pd.DataFrame()
 
 def save_rates_cache(rates: dict, filename: str = "rates_cache.json"):
     """
-    Menyimpan rates (BI rate, SBN rate) ke cache JSON.
+    Saves rates (BI rate, SBN rate) to a JSON cache file.
     """
     try:
         _ensure_cache_dir()
         path = os.path.join(CACHE_DIR, filename)
         with open(path, "w") as f:
             json.dump(rates, f, indent=4)
-        logger.info(f"Suku bunga berhasil disimpan ke cache: {path}")
+        logger.info(f"Interest rates successfully cached to: {path}")
     except Exception as e:
-        logger.error(f"Gagal menyimpan cache suku bunga: {e}")
+        logger.error(f"Failed to save interest rates cache: {e}")
 
 def load_rates_cache(filename: str = "rates_cache.json") -> dict:
     """
-    Memuat rates dari cache JSON jika ada.
+    Loads rates from the JSON cache if it exists.
     """
     path = os.path.join(CACHE_DIR, filename)
     if os.path.exists(path):
         try:
             with open(path, "r") as f:
                 rates = json.load(f)
-            logger.info(f"Berhasil memuat suku bunga dari cache: {path}")
+            logger.info(f"Successfully loaded interest rates from cache: {path}")
             return rates
         except Exception as e:
-            logger.error(f"Gagal membaca cache suku bunga: {e}")
+            logger.error(f"Failed to read interest rates cache: {e}")
     return {}

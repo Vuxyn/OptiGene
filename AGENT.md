@@ -1,32 +1,32 @@
 # AGENT CONTEXT — Portfolio Optimizer Project
 
-## Identitas Project
-Kamu adalah asisten coding untuk proyek **Portfolio Optimizer**, sebuah aplikasi yang membantu orang awam mengalokasikan uang ke instrumen investasi terbaik menggunakan Genetic Algorithm yang dipercepat dengan PySpark dan CUDA.
+## Project Identity
+You are the coding assistant for the **Portfolio Optimizer** project, an application that helps retail investors allocate capital to the best investment instruments using a Genetic Algorithm (GA) accelerated with PySpark and CUDA.
 
 ---
 
-## Tujuan Proyek
-1. **Akademis:** Buktikan komputasi paralel (PySpark & CUDA) lebih cepat dari sekuensial untuk evaluasi portfolio, dengan hasil yang tetap sama.
-2. **End User:** Bantu orang awam menjawab "Punya Rp 5 juta, taruh dimana?" dengan rekomendasi alokasi yang mudah dipahami.
+## Project Objectives
+1. **Academic:** Empirically prove that parallel computing (PySpark & CUDA) is faster than sequential execution for portfolio evaluation while yielding identical results.
+2. **End User:** Help retail investors answer the question "I have IDR 5 million, where should I put it?" with easy-to-understand allocation recommendations.
 
 ---
 
-## Stack Teknologi
+## Technology Stack
 
-| Layer | Teknologi |
+| Layer | Technology |
 |---|---|
-| Data fetching | `yfinance`, `requests`, `BeautifulSoup` |
-| Data processing | PySpark (SparkSession + SparkContext RDD) |
-| GPU computing | CUDA C / CuPy |
+| Data Fetching | `yfinance`, `requests`, `BeautifulSoup` |
+| Data Processing | PySpark (SparkSession + SparkContext RDD) |
+| GPU Computing | CUDA C / CuPy |
 | Optimizer | Genetic Algorithm (Python) |
-| Backend | Flask (Python) |
-| Frontend | HTML + CSS + Vanilla JS |
+| Backend | FastAPI (Python + Uvicorn) |
+| Frontend | Next.js + Tailwind CSS + Chart.js |
 
 ---
 
-## Aturan Pengembangan
+## Development Guidelines
 
-### PySpark — WAJIB gunakan 4 pendekatan ini:
+### PySpark — MUST use these 4 approaches:
 ```python
 # 1. SparkSession SQL Query
 spark.sql("SELECT ...")
@@ -40,128 +40,88 @@ rdd.filter(lambda x: ...)
 # 4. RDD reduce
 rdd.reduce(lambda a, b: ...)
 ```
-Setiap pendekatan HARUS diukur execution time-nya dan dibandingkan.
+Every approach MUST have its execution time measured and compared.
 
-### CUDA — WAJIB gunakan grid & thread eksplisit:
+### CUDA — MUST use explicit grid & thread dimensions:
 ```c
 int blocks  = (n + 255) / 256;
 int threads = 256;
 kernel<<<blocks, threads>>>(args);
 ```
-Kernel yang wajib ada: `covarianceMatrix`, `evaluateAllPortfolios`.
+Required kernels: `covarianceMatrix`, `evaluateAllPortfolios`.
 
 ### Genetic Algorithm:
-- Individu = array bobot alokasi per aset (sum = 1.0)
+- Individual = array of allocation weights per asset (sum = 1.0)
 - Fitness = Sharpe Ratio
-- Populasi = 1000, Generasi = 500
-- Fitness function dipercepat via CUDA
+- Population = 1000, Generations = 500
+- Fitness evaluation function is accelerated via CUDA / PySpark / hybrid
 
-### Benchmark Runner — WAJIB ada 6 perbandingan:
+### Benchmark Runner — MUST include 6 execution methods:
 ```
-1. Sekuensial Python    → baseline
-2. PySpark SQL          → paralel CPU
-3. PySpark RDD map      → paralel CPU
-4. PySpark filter+reduce→ paralel CPU
-5. CUDA murni           → paralel GPU
+1. Sequential Python    → baseline
+2. PySpark SQL          → parallel CPU
+3. PySpark RDD map      → parallel CPU
+4. PySpark filter+reduce→ parallel CPU
+5. Pure CUDA            → parallel GPU
 6. PySpark + CUDA       → hybrid (scalable)
 ```
-Operasi yang dibandingkan HARUS identik (Sharpe Ratio 1000 portfolio).
+The operations being compared MUST be identical (Sharpe Ratio evaluation for 1000 portfolios).
 
 ---
 
-## Aset yang Dioptimasi
+## Optimized Assets
 
 ```python
 ASSET_UNIVERSE = {
     "fixed": [
-        {"name": "Deposito",  "source": "bi_rate"},
-        {"name": "SBN ORI",   "source": "djppr_api"},
+        {"name": "Time Deposit", "source": "bi_rate"},
+        {"name": "Government Bonds (SBN)", "source": "djppr_api"},
     ],
     "dynamic": [
-        {"name": "Saham IDX", "source": "yfinance", "index": "LQ45"},
-        {"name": "Emas",      "source": "yfinance", "ticker": "ANTM.JK"},
+        {"name": "IDX Stock", "source": "yfinance", "index": "LQ45"},
+        {"name": "Gold", "source": "yfinance", "ticker": "ANTM.JK"},
     ]
 }
 ```
 
-### Validasi Data — WAJIB:
-- Hanya saham dengan listing > 3 tahun
-- Coverage data ≥ 95%
-- Periode: 2022-01-01 s/d 2024-12-31 (post-COVID)
-- Auto-reject saham dengan data tidak lengkap
+### Data Validation — REQUIRED:
+- Only stocks with listing history > 3 years
+- Data coverage $\ge$ 95%
+- Period: 2022-01-01 to 2024-12-31 (post-COVID)
+- Auto-reject stocks with incomplete data
 
 ---
 
-## Struktur Folder
+## Output Format for End Users
 
-```
-portfolio-optimizer/
-├── frontend/
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
-├── backend/
-│   ├── app.py              # Flask API
-│   ├── orchestrator.py     # koordinasi semua layer
-│   └── formatter.py        # angka → bahasa awam
-├── data/
-│   ├── fetcher.py          # yfinance + BI + DJPPR
-│   ├── validator.py        # filter data tidak valid
-│   └── cache.py
-├── pyspark/
-│   ├── session.py          # SparkSession SQL
-│   └── context.py          # RDD map/reduce/filter
-├── cuda/
-│   ├── covariance.cu
-│   ├── montecarlo.cu
-│   └── evaluate.cu
-├── ga/
-│   ├── optimizer.py
-│   ├── fitness.py
-│   └── constraints.py
-├── benchmark/
-│   ├── sequential.py
-│   ├── pyspark_bench.py
-│   ├── cuda_bench.cu
-│   └── runner.py
-└── results/
-    ├── benchmark.csv
-    ├── optimal_weights.json
-    └── charts/
-```
+Always convert technical outputs to layman-friendly descriptions:
 
----
-
-## Output Format untuk End User
-
-Selalu konversi output teknis ke bahasa awam:
-
-| Jangan (teknis) | Gunakan (awam) |
+| Don't Use (Technical) | Use Instead (Layman-friendly) |
 |---|---|
-| `weight: 0.40` | "Taruh Rp 2 juta di Deposito" |
-| `return: 8.3%` | "Estimasi 3 tahun jadi Rp 6.4 juta" |
-| `max_drawdown: 6%` | "Paling berat bisa turun Rp 300rb" |
-| `500 generasi GA` | "Komputer coba 100.000 kombinasi" |
-| `Sharpe Ratio` | "Seberapa worth it risikonya" |
-| `volatilitas` | "Seberapa naik-turun harganya" |
+| `weight: 0.40` | "Invest IDR 2 million in Time Deposits" |
+| `return: 8.3%` | "Estimated growth in 3 years to IDR 6.4 million" |
+| `max_drawdown: 6%` | "Under worst-case scenarios, temporary dip could reach IDR 300K" |
+| `500 GA generations` | "The computer simulated 100,000 portfolio combinations" |
+| `Sharpe Ratio` | "How efficient the return is compared to the risk" |
+| `volatility` | "How much the price fluctuates up and down" |
 
 ---
 
-## Constraint GA berdasarkan Profil Risiko
+## GA Constraints based on Risk Profile
 
 ```python
 RISK_PROFILES = {
-    "aman": {
-        "max_saham"   : 0.20,   # maks 20% di saham
-        "min_fixed"   : 0.60,   # min 60% deposito/SBN
+    "safe": {
+        "max_saham"   : 0.20,   # max 20% in stocks/gold
+        "min_fixed"   : 0.60,   # min 60% in deposits/bonds
         "max_drawdown": 0.05,
     },
-    "seimbang": {
+    "balanced": {
         "max_saham"   : 0.50,
         "min_fixed"   : 0.30,
         "max_drawdown": 0.15,
     },
-    "agresif": {
+    "aggressive": {
         "max_saham"   : 0.80,
         "min_fixed"   : 0.10,
         "max_drawdown": 0.30,
@@ -171,38 +131,36 @@ RISK_PROFILES = {
 
 ---
 
-## Ekspektasi Benchmark
+## Execution Time Expectations
 
 ```
-Sekuensial Python     : ~45 detik  (1x)
-PySpark SQL           : ~8 detik   (5.6x)
-PySpark RDD map       : ~5 detik   (8.7x)
-PySpark filter+reduce : ~4.8 detik (9.4x)
-CUDA murni            : ~0.3 detik (150x)
-PySpark + CUDA        : ~1.5 detik (30x)
+Sequential Python     : ~45 seconds (1x - baseline)
+PySpark SQL           : ~8 seconds  (~5.6x speedup)
+PySpark RDD map       : ~5 seconds  (~8.7x speedup)
+PySpark filter+reduce : ~4.8 seconds (~9.4x speedup)
+Pure CUDA             : ~0.3 seconds (~150x speedup)
+PySpark + CUDA        : ~1.5 seconds (~30x speedup)
 ```
 
-Angka ini adalah estimasi — hasil aktual dicatat di `results/benchmark.csv`.
+These values are estimates — actual results are stored in `results/benchmark.csv`.
 
 ---
 
-## Catatan Penting
+## Crucial Implementation Details
 
-1. **Data TIDAK boleh hardcoded** — semua fetch dinamis dari API/yfinance
-2. **CUDA + PySpark gabungan** bukan yang tercepat, tapi paling scalable — jelaskan ini di video
-3. **Walk-forward validation** — validasi GA di beberapa periode berbeda
-4. **Video 5 menit** — buka dengan hook orang awam, bukan jargon teknis
-5. **Survivorship bias** — jangan masukkan saham yang baru IPO < 3 tahun
+1. **No Hardcoded Data** — fetch all rates and stock data dynamically from web resources / yfinance.
+2. **PySpark + CUDA hybrid** is not necessarily the fastest for small datasets due to Spark broadcast overhead, but is the most scalable for massive datasets. Explain this in the final walkthrough.
+3. **Walk-forward validation** — validate the GA across different sub-periods.
+4. **Survivorship bias** — exclude any stock that was listed after the starting period (listing history < 3 years).
 
 ---
 
-## Checklist Sebelum Submit
+## Checklist Before Submission
 
-- [ ] PySpark: SQL query, map, reduce, filter semua ada
-- [ ] Execution time semua metode tercatat
-- [ ] CUDA kernel dengan grid & thread eksplisit
-- [ ] GA konvergen (grafik Sharpe per generasi naik)
-- [ ] Data divalidasi (coverage ≥ 95%)
-- [ ] UI bisa dipakai tanpa penjelasan teknis
-- [ ] Video 5 menit, 720p, suara jelas / ada subtitle
-- [ ] Link video di-paste ke assignment
+- [ ] PySpark: SQL query, map, reduce, filter are all implemented
+- [ ] Execution times of all 6 methods are recorded
+- [ ] CUDA kernel written with explicit grid & thread dimensions
+- [ ] GA converges (Sharpe Ratio increases across generations)
+- [ ] Historical prices are validated (coverage $\ge$ 95%)
+- [ ] UI is fully functional and uses non-technical layman formatting
+- [ ] Verification video is prepared

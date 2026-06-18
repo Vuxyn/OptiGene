@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="OptiGene API Server",
-    description="Backend API untuk OptiGene Portfolio Optimizer menggunakan Genetic Algorithm, PySpark, dan CUDA."
+    description="Backend API for the OptiGene Portfolio Optimizer using Genetic Algorithm, PySpark, and CUDA."
 )
 
-# Menambahkan CORS Middleware agar backend dapat diakses dari domain frontend (misal Next.js di port 3000 / AWS)
+# Add CORS Middleware so that the backend can be accessed from the frontend domain (e.g. Next.js on port 3000 or AWS EC2)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,14 +29,14 @@ app.add_middleware(
 
 class OptimizeRequest(BaseModel):
     capital: float = 5000000.0
-    profile: str = "seimbang"
+    profile: str = "balanced"
     duration: int = 3
     mode: str = "numpy_vectorized"
 
 @app.get("/")
 def read_root():
     """
-    Status endpoint untuk memverifikasi server berjalan.
+    Status endpoint to verify that the server is running.
     """
     return {
         "status": "online",
@@ -46,7 +46,7 @@ def read_root():
 @app.post("/api/optimize")
 def api_optimize(req: OptimizeRequest):
     """
-    Endpoint untuk menghitung alokasi portofolio optimal berdasarkan modal dan profil risiko.
+    Endpoint to compute optimal portfolio allocation based on capital and risk profile.
     """
     try:
         capital = req.capital
@@ -60,31 +60,31 @@ def api_optimize(req: OptimizeRequest):
             "data": result
         }
     except Exception as e:
-        logger.error(f"Error pada /api/optimize: {e}", exc_info=True)
+        logger.error(f"Error on /api/optimize: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/benchmark")
 @app.get("/api/benchmark")
 def api_benchmark():
     """
-    Endpoint untuk memicu proses benchmarking perbandingan performa 6 metode evaluasi portofolio.
+    Endpoint to trigger the performance benchmarking comparing 6 portfolio evaluation methods.
     """
     try:
-        logger.info("Menerima request benchmark performa...")
+        logger.info("Received request for performance benchmark...")
         
-        # Ambil data dari cache
+        # Retrieve data from cache
         df_prices = load_prices_cache()
         rates = load_rates_cache()
         if df_prices.empty or not rates:
-            logger.info("Cache kosong, memicu fetch data awal...")
-            optimize_portfolio_flow(5000000.0, "seimbang", 1, mode="numpy_vectorized")
+            logger.info("Cache is empty, triggering initial data fetch...")
+            optimize_portfolio_flow(5000000.0, "balanced", 1, mode="numpy_vectorized")
             df_prices = load_prices_cache()
             rates = load_rates_cache()
             
         bi_rate = rates["bi_rate"]
         sbn_rate = rates["sbn_rate"]
         
-        # Hitung return harian
+        # Calculate daily returns
         df_returns_dynamic = df_prices.pct_change().dropna()
         T_ret = len(df_returns_dynamic)
         
@@ -123,8 +123,8 @@ def api_benchmark():
             else:
                 P_rel[:, col_idx] = 1.0
 
-        # Jalankan benchmark
-        df_benchmark = run_benchmark(df_prices, mu, Sigma, P_rel, profile_name="seimbang")
+        # Run benchmark
+        df_benchmark = run_benchmark(df_prices, mu, Sigma, P_rel, profile_name="balanced")
         
         benchmark_list = df_benchmark.to_dict(orient="records")
         return {
@@ -132,10 +132,10 @@ def api_benchmark():
             "data": benchmark_list
         }
     except Exception as e:
-        logger.error(f"Error pada /api/benchmark: {e}", exc_info=True)
+        logger.error(f"Error on /api/benchmark: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# Handler cleanup Spark ketika proses dihentikan
+# Spark cleanup handler when processes are terminated
 @app.on_event("shutdown")
 def shutdown_event():
     logger.info("Shutting down API server...")

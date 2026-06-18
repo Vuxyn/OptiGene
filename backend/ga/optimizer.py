@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 
 def repair_portfolio_weights(w: np.ndarray, profile_name: str) -> np.ndarray:
     """
-    Fungsi perbaikan konstruktif untuk memaksa bobot portofolio mematuhi
-    batasan alokasi kategori saham/fixed income sesuai profil risiko.
+    Constructive repair function to force portfolio weights to comply
+    with the asset allocation constraints (stocks/fixed income) according to the risk profile.
     """
     w = project_weights(w)
     cons = get_constraints(profile_name)
     
-    fixed_idx = [0, 1]              # Deposito, SBN
-    saham_idx = list(range(2, len(w))) # Saham, Emas
+    fixed_idx = [0, 1]              # Time Deposit, SBN
+    saham_idx = list(range(2, len(w))) # Stocks, Gold
     
     fixed_sum = w[0] + w[1]
     saham_sum = np.sum(w[2:])
@@ -22,7 +22,7 @@ def repair_portfolio_weights(w: np.ndarray, profile_name: str) -> np.ndarray:
     max_saham = cons["max_saham"]
     min_fixed = cons["min_fixed"]
     
-    # 1. Batasi bobot saham maksimal
+    # 1. Bound maximum stock weight
     if saham_sum > max_saham:
         if saham_sum > 0:
             w[saham_idx] = w[saham_idx] * (max_saham / saham_sum)
@@ -35,11 +35,11 @@ def repair_portfolio_weights(w: np.ndarray, profile_name: str) -> np.ndarray:
         else:
             w[fixed_idx] = np.array([0.5, 0.5]) * fixed_target
             
-    # Hitung ulang sum saat ini
+    # Recalculate current sums
     fixed_sum = w[0] + w[1]
     saham_sum = np.sum(w[2:])
     
-    # 2. Batasi bobot fixed income minimal
+    # 2. Bound minimum fixed income weight
     if fixed_sum < min_fixed:
         if fixed_sum > 0:
             w[fixed_idx] = w[fixed_idx] * (min_fixed / fixed_sum)
@@ -79,16 +79,16 @@ class GeneticOptimizer:
         spark = None
     ) -> dict:
         """
-        Menjalankan alur optimasi Genetic Algorithm untuk mencari alokasi bobot optimal.
+        Runs the Genetic Algorithm optimization flow to discover the optimal portfolio weights.
         """
         N = len(mu)
         cons = get_constraints(profile_name)
         
-        # Menggunakan BI Rate (index 0) sebagai suku bunga bebas risiko (risk-free rate)
-        # di Sharpe Ratio. Jika nilainya nol, kita gunakan 0.05 sebagai standard.
+        # Use BI Rate (index 0) as the risk-free rate for Sharpe Ratio calculations.
+        # If the rate is 0, default to 0.05.
         rf_rate = mu[0] if mu[0] > 0 else 0.05
         
-        # 1. Inisialisasi Populasi secara acak dan langsung di-repair
+        # 1. Initialize random population and immediately repair individuals
         population = np.random.rand(self.pop_size, N)
         for i in range(self.pop_size):
             population[i] = repair_portfolio_weights(population[i], profile_name)
@@ -100,32 +100,27 @@ class GeneticOptimizer:
         best_vol = 0.0
         best_dd = 0.0
         
-        logger.info(f"Memulai GA dengan backend '{mode}' untuk profil '{profile_name}'...")
+        logger.info(f"Starting GA optimization with backend '{mode}' for profile '{profile_name}'...")
         
         for gen in range(self.generations):
-            # 2. Evaluasi populasi (hitung Return, Vol, Sharpe)
-            # Sharpe disembunyikan jika melebihi batas drawdown dalam evaluasi
+            # 2. Evaluate population fitness (Return, Vol, Sharpe)
             rets, vols, sharpes = evaluate_population(population, mu, Sigma, rf_rate, mode, spark)
             
-            # 3. Hitung Max Drawdown untuk penalti constraint dinamis
-            # Untuk mempercepat GA, kita hitung drawdown hanya untuk individu-individu top 
-            # atau jika dihitung per individu saat evaluasi. Di fitness.py, kita hitung sharpe.
-            # Kita bisa memvalidasi max_drawdown di sini.
-            # Karena menghitung drawdown membutuhkan matriks P_rel yang besar, 
-            # kita lakukan kalkulasi drawdown secara efisien di CPU NumPy untuk populasi saat ini.
-            # Nilai portofolio historis: P x T
+            # 3. Compute Max Drawdown for dynamic penalty constraints
+            # To speed up the GA loop, we compute drawdown using vectorized NumPy operations.
+            # Portfolio value paths: P x T
             port_values = np.dot(population, P_rel.T) # (P, N) x (N, T) -> (P, T)
             
-            # Cari cumulative max sepanjang baris (hari) untuk tiap portfolio
+            # Retrieve cumulative max along rows (days) for each portfolio
             cum_maxes = np.maximum.accumulate(port_values, axis=1)
             drawdowns = (cum_maxes - port_values) / cum_maxes
             max_dds = np.max(drawdowns, axis=1)
             
-            # Berikan penalti berat ke Sharpe Ratio jika melanggar batas max_drawdown profil risiko
+            # Apply a heavy penalty to Sharpe Ratio if the portfolio violates the maximum drawdown constraint
             violators = max_dds > cons["max_drawdown"]
             sharpes = np.where(violators, -99.0, sharpes)
             
-            # 4. Cari portofolio terbaik di generasi ini
+            # 4. Find the best portfolio in the current generation
             best_idx = np.argmax(sharpes)
             current_best_sharpe = sharpes[best_idx]
             
@@ -139,14 +134,14 @@ class GeneticOptimizer:
             best_sharpe_history.append(float(best_portfolio))
             
             if (gen + 1) % 100 == 0 or gen == 0:
-                logger.info(f"Generasi {gen+1}/{self.generations} | Best Sharpe: {best_portfolio:.4f} | Return: {best_ret*100:.2f}% | Vol: {best_vol*100:.2f}% | Max DD: {best_dd*100:.2f}%")
+                logger.info(f"Generation {gen+1}/{self.generations} | Best Sharpe: {best_portfolio:.4f} | Return: {best_ret*100:.2f}% | Vol: {best_vol*100:.2f}% | Max DD: {best_dd*100:.2f}%")
                 
-            # 5. Seleksi Elitisme (ambil top M individu terbaik)
+            # 5. Elitism Selection (take the top elite individuals)
             elite_indices = np.argsort(sharpes)[-self.elitism_count:]
             new_population = np.zeros_like(population)
             new_population[:self.elitism_count] = population[elite_indices]
             
-            # 6. Bentuk populasi baru (Crossover & Mutasi)
+            # 6. Formulate new population (Crossover & Mutation)
             idx_new = self.elitism_count
             while idx_new < self.pop_size:
                 # Tournament Selection (k=3)
@@ -169,7 +164,7 @@ class GeneticOptimizer:
                 if np.random.rand() < self.mutation_rate:
                     c2 = self._mutate(c2)
                     
-                # Repair batasan alokasi
+                # Repair allocation boundaries
                 new_population[idx_new] = repair_portfolio_weights(c1, profile_name)
                 if idx_new + 1 < self.pop_size:
                     new_population[idx_new + 1] = repair_portfolio_weights(c2, profile_name)
@@ -178,7 +173,7 @@ class GeneticOptimizer:
                 
             population = new_population
             
-        logger.info(f"GA Selesai. Sharpe Optimal: {best_portfolio:.4f}")
+        logger.info(f"GA Complete. Optimal Sharpe: {best_portfolio:.4f}")
         return {
             "weights": best_w.tolist(),
             "return": float(best_ret),
@@ -194,7 +189,7 @@ class GeneticOptimizer:
         return best_candidate
 
     def _mutate(self, w: np.ndarray) -> np.ndarray:
-        # Tambahkan noise gaussian kecil ke salah satu bobot secara acak
+        # Add small Gaussian noise to a randomly selected asset weight
         N = len(w)
         mutate_idx = np.random.randint(0, N)
         w[mutate_idx] += np.random.normal(0, 0.05)

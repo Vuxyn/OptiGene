@@ -19,12 +19,12 @@ def optimize_portfolio_flow(
     mode: str = "numpy_vectorized"
 ) -> dict:
     """
-    Mengkoordinasikan seluruh alur kerja aplikasi OptiGene dari fetching data,
-    kalkulasi statistik, eksekusi GA, hingga pemformatan ramah pemula.
+    Coordinates the entire OptiGene workflow: fetching data,
+    calculating asset statistics, executing the Genetic Algorithm, and formatting output.
     """
-    logger.info("Memulai alur optimasi portofolio OptiGene...")
+    logger.info("Starting OptiGene portfolio optimization workflow...")
     
-    # 1. Ambil atau Muat Suku Bunga (BI Rate & SBN)
+    # 1. Fetch or Load Interest Rates (BI Rate & SBN)
     rates = load_rates_cache()
     if not rates:
         bi_rate = fetch_bi_rate()
@@ -35,44 +35,44 @@ def optimize_portfolio_flow(
         bi_rate = rates["bi_rate"]
         sbn_rate = rates["sbn_rate"]
         
-    # 2. Ambil atau Muat Harga Historis Saham & Emas (2022 - 2024)
+    # 2. Fetch or Load Historical Asset Prices (Stocks & Gold, 2022 - 2024)
     df_prices = load_prices_cache()
     if df_prices.empty:
-        # Fetch Emas (ANTM.JK)
+        # Fetch Gold (ANTM.JK)
         s_gold = fetch_gold_prices()
-        # Fetch Saham LQ45
+        # Fetch LQ45 Stocks
         df_stocks = fetch_asset_prices(LQ45_TICKERS)
         
-        # Gabungkan
+        # Combine
         if not s_gold.empty:
-            df_stocks["EMAS"] = s_gold
+            df_stocks["GOLD"] = s_gold
             
         df_prices = df_stocks
         
-        # Validasi Aset (listing > 3 tahun, data coverage >= 95%)
+        # Validate Assets (listing > 3 years, data coverage >= 95%)
         df_prices, valid_tickers = validate_assets(df_prices, min_coverage=0.95)
         
-        # Simpan ke cache jika sukses
+        # Save to cache if successful
         if not df_prices.empty:
             save_prices_cache(df_prices)
     else:
         valid_tickers = df_prices.columns.tolist()
 
     if df_prices.empty:
-        raise RuntimeError("Gagal memuat data historis harga aset yang valid.")
+        raise RuntimeError("Failed to load valid historical asset prices.")
 
-    # 3. Hitung Return Harian untuk Aset Dinamis (Saham & Emas)
+    # 3. Calculate Daily Returns for Dynamic Assets (Stocks & Gold)
     df_returns_dynamic = df_prices.pct_change().dropna()
     
-    # 4. Integrasikan Aset Fixed Income (Deposito & SBN)
-    # Deposito memiliki rate harian konstan = bi_rate / 252
-    # SBN memiliki rate harian konstan = sbn_rate / 252
+    # 4. Integrate Fixed Income Assets (Time Deposits & SBN)
+    # Time Deposits have constant daily return = bi_rate / 252
+    # SBN has constant daily return = sbn_rate / 252
     T = len(df_returns_dynamic)
     
     deposito_daily_ret = bi_rate / 252.0
     sbn_daily_ret = sbn_rate / 252.0
     
-    # Buat DataFrame return lengkap (Deposito, SBN, Emas, Saham)
+    # Create complete returns DataFrame (Time Deposit, SBN, Gold, Stocks)
     df_returns = pd.DataFrame(index=df_returns_dynamic.index)
     df_returns["DEPOSITO"] = np.full(T, deposito_daily_ret)
     df_returns["SBN ORI"] = np.full(T, sbn_daily_ret)
@@ -80,37 +80,37 @@ def optimize_portfolio_flow(
     for col in df_returns_dynamic.columns:
         df_returns[col] = df_returns_dynamic[col]
         
-    # Nama semua aset berurutan
+    # Name all assets in order
     asset_names = df_returns.columns.tolist()
     N = len(asset_names)
     
-    # 5. Hitung Statistik Aset (Expected Return & Covariance)
-    # Gunakan Spark SQL untuk menghitung statistik historis jika Spark aktif
-    # (Opsional/Bisa CPU fallback untuk kecepatan inisialisasi)
+    # 5. Compute Asset Statistics (Expected Return & Covariance)
+    # Use Spark SQL to calculate historical stats if Spark is enabled
+    # (Optional / Can CPU fallback for fast initialization)
     spark = None
     if "pyspark" in mode.lower():
         try:
             spark = get_spark_session()
             df_stats_sql = compute_asset_stats_sql(spark, df_returns)
             
-            # Petakan hasil SQL ke array mu
+            # Map SQL result to expected return array (mu)
             mu_dict = dict(zip(df_stats_sql["Asset"], df_stats_sql["expected_return"]))
             mu = np.array([mu_dict.get(asset, 0.0) for asset in asset_names])
         except Exception as e:
-            logger.error(f"Gagal hitung statistik via Spark SQL: {e}. Menggunakan NumPy CPU.")
-            # Fallback expected return CPU
+            logger.error(f"Failed to calculate stats via Spark SQL: {e}. Using NumPy on CPU.")
+            # Fallback to CPU expected return
             mu = df_returns.mean().values * 252.0
     else:
         # NumPy CPU expected return
         mu = df_returns.mean().values * 252.0
         
-    # Untuk Deposito dan SBN, paksa expected return-nya persis ke suku bunga tahunan
+    # For Time Deposit and SBN, force their expected returns to match annual interest rates
     mu[0] = bi_rate
     mu[1] = sbn_rate
     
-    # Hitung matriks kovarians (disetahunkan)
-    # Covariance Deposito dan SBN dengan aset lain akan bernilai 0 karena konstan
-    # Kita hitung via NumPy CPU (cepat) atau GPU jika CuPy aktif dan mode="cuda"
+    # Compute covariance matrix (annualized)
+    # Covariance of Time Deposit and SBN with other assets is 0 since they are constant
+    # We calculate via NumPy CPU (fast) or GPU if CuPy is enabled and mode="cuda"
     if mode == "cuda":
         from backend.cuda.kernels import gpu_compute_covariance, CUDA_AVAILABLE
         if CUDA_AVAILABLE:
@@ -118,56 +118,56 @@ def optimize_portfolio_flow(
                 means = df_returns.mean().values
                 Sigma = gpu_compute_covariance(df_returns.values, means)
             except Exception as e:
-                logger.error(f"Gagal hitung kovarians di GPU: {e}. Melakukan fallback ke CPU.")
+                logger.error(f"Failed to calculate covariance on GPU: {e}. Falling back to CPU.")
                 Sigma = np.cov(df_returns.values, rowvar=False) * 252.0
         else:
             Sigma = np.cov(df_returns.values, rowvar=False) * 252.0
     else:
         Sigma = np.cov(df_returns.values, rowvar=False) * 252.0
         
-    # Bersihkan matrix cov agar tidak ada nilai NaN/Inf
+    # Clean covariance matrix to ensure no NaN/Inf values
     Sigma = np.nan_to_num(Sigma, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # 6. Hitung Pergerakan Harga Relatif Historis (P_rel) untuk Max Drawdown
-    # P_rel = T x N
+    # 6. Calculate Historical Price Relative Paths (P_rel) for Max Drawdown
+    # P_rel size: T + 1 x N
     P_rel = np.zeros((T + 1, N))
     
-    # Hari ke-0 bernilai 1.0 (baseline)
+    # Day 0 values are 1.0 (baseline)
     P_rel[0, :] = 1.0
     
-    # Untuk Deposito & SBN: tumbuh konstan (1 + daily_return)^t
-    # Untuk Saham & Emas: harga relatif terhadap harga awal
+    # For Time Deposit & SBN: grow constantly (1 + daily_return)^t
+    # For Stocks & Gold: relative prices to initial price
     for t in range(1, T + 1):
         P_rel[t, 0] = (1.0 + deposito_daily_ret) ** t
         P_rel[t, 1] = (1.0 + sbn_daily_ret) ** t
         
-    # Dinamis (Saham & Emas)
-    # df_prices_matched mencakup harga harian
-    # Kita cari harga penutupan awal
+    # Dynamic (Stocks & Gold)
+    # df_prices includes daily closing prices
+    # Find initial price
     for col_idx, col_name in enumerate(asset_names[2:], start=2):
         initial_price = df_prices[col_name].iloc[0]
-        # Pastikan tidak pembagian nol
+        # Prevent division by zero
         if initial_price > 0:
             prices_rel = df_prices[col_name].values / initial_price
-            # Cocokkan panjang dengan T + 1
+            # Match length to T + 1
             P_rel[:, col_idx] = prices_rel[:T+1]
         else:
             P_rel[:, col_idx] = 1.0
 
-    # 7. Jalankan Genetic Algorithm Optimizer
-    # Gunakan parameter default GA (1000 populasi, 500 generasi)
+    # 7. Run Genetic Algorithm Optimizer
+    # Default parameters: population size = 1000, generations = 500
     optimizer = GeneticOptimizer(pop_size=1000, generations=500)
     
-    # Pastikan Spark session diteruskan ke optimizer jika mode PySpark digunakan
+    # Ensure Spark session is passed to the optimizer if PySpark mode is used
     if "pyspark" in mode.lower() and spark is None:
         spark = get_spark_session()
         
     ga_results = optimizer.run(mu, Sigma, P_rel, risk_profile, mode=mode, spark=spark)
     
-    # Tambahkan metadata nama aset untuk formatter
+    # Add asset names metadata for the formatter
     ga_results["asset_names"] = asset_names
     
-    # 8. Format Output ke Bahasa Awam
+    # 8. Format Output to Layman-friendly Terms
     layman_formatted = format_layman_results(ga_results, capital, duration_years)
     
     return layman_formatted

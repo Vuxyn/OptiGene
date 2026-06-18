@@ -8,31 +8,31 @@ logger = logging.getLogger(__name__)
 
 def compute_asset_stats_sql(spark: SparkSession, df_returns: pd.DataFrame) -> pd.DataFrame:
     """
-    Menggunakan SparkSession SQL Query untuk menghitung rata-rata return tahunan
-    dan volatilitas/varian tahunan per aset dari data return harian.
+    Uses SparkSession SQL queries to calculate mean annual returns, annual volatility,
+    and variance per asset from daily returns data.
     """
-    logger.info("Menghitung statistik aset menggunakan Spark SQL...")
+    logger.info("Computing asset statistics using Spark SQL...")
     
-    # 1. Ubah format returns (wide format) menjadi long format untuk SQL
-    # df_returns memiliki kolom Date (index) dan kolom-kolom Aset
+    # 1. Melt wide returns format into long format for SQL query execution
+    # df_returns has Date (index) and Asset columns
     df_long = df_returns.reset_index().melt(id_vars=["Date"], var_name="Asset", value_name="DailyReturn")
     df_long = df_long.dropna()
     
-    # 2. Buat Spark DataFrame
+    # 2. Create Spark DataFrame
     schema = StructType([
         StructField("Date", StringType(), True),
         StructField("Asset", StringType(), True),
         StructField("DailyReturn", DoubleType(), True)
     ])
     
-    # Mengonversi Date ke string untuk kemudahan transfer data ke Spark
+    # Convert Date to string to ease data transfer to Spark workers
     df_long["Date"] = df_long["Date"].astype(str)
     spark_df = spark.createDataFrame(df_long, schema=schema)
     
     # 3. Register as SQL Temp View
     spark_df.createOrReplaceTempView("daily_returns")
     
-    # 4. Jalankan SQL Query untuk menghitung expected return dan variance (disetahunkan dengan faktor 252 hari bursa)
+    # 4. Run SQL Query to compute expected returns and variance (annualized by factor of 252 trading days)
     query = """
         SELECT 
             Asset, 
@@ -45,13 +45,13 @@ def compute_asset_stats_sql(spark: SparkSession, df_returns: pd.DataFrame) -> pd
             Asset
     """
     result_df = spark.sql(query).toPandas()
-    logger.info("Statistik aset berhasil dihitung via Spark SQL.")
+    logger.info("Asset statistics computed successfully via Spark SQL.")
     return result_df
 
 def calculate_portfolio_metrics(w: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, P_rel: np.ndarray, rf_rate: float) -> tuple[float, float, float, float]:
     """
-    Fungsi bantu untuk menghitung expected return, volatilitas, Sharpe ratio, dan max drawdown dari suatu bobot portofolio.
-    Dijalankan di worker node.
+    Helper function to calculate expected return, volatility, Sharpe ratio, and max drawdown for a portfolio weight vector.
+    Executed on worker nodes.
     """
     # Expected Return: w^T * mu
     port_return = float(np.dot(w, mu))
@@ -63,12 +63,12 @@ def calculate_portfolio_metrics(w: np.ndarray, mu: np.ndarray, Sigma: np.ndarray
     # Sharpe Ratio: (Return - Rf) / Volatility
     sharpe = (port_return - rf_rate) / port_vol if port_vol > 0 else -99.0
     
-    # Max Drawdown: hitung dari pergerakan harga historis relatif (P_rel)
-    # P_rel adalah matriks T x M (baris hari, kolom aset)
-    # Nilai portofolio setiap hari: V_t = P_rel * w
+    # Max Drawdown: calculate from historical price relative paths (P_rel)
+    # P_rel is a T x N matrix (trading days as rows, assets as columns)
+    # Portfolio value path: V_t = P_rel * w
     port_values = np.dot(P_rel, w)
     
-    # Cari drawdown maksimum
+    # Find maximum peak-to-trough drawdown
     cum_max = np.maximum.accumulate(port_values)
     drawdowns = (cum_max - port_values) / cum_max
     max_dd = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0.0
@@ -85,13 +85,13 @@ def evaluate_portfolios_rdd(
     rf_rate: float
 ) -> tuple[list[tuple], tuple]:
     """
-    Evaluasi populasi portofolio secara paralel menggunakan PySpark RDD (map, filter, reduce).
+    Evaluates the portfolio population in parallel using PySpark RDD (map, filter, reduce).
     
     Returns:
-        evaluated_list: List hasil evaluasi semua portofolio yang lolos constraint.
-        best_portfolio: Portofolio terbaik (bobot, return, vol, sharpe, max_dd) berdasarkan RDD reduce.
+        evaluated_list: List of evaluated portfolios passing the risk constraints.
+        best_portfolio: The absolute best portfolio tuple (weights, return, vol, sharpe, max_dd) based on RDD reduce.
     """
-    # 1. Broadcast variabel-variabel besar ke seluruh worker node
+    # 1. Broadcast large read-only variables to all worker nodes
     sc = spark.sparkContext
     b_mu = sc.broadcast(mu)
     b_Sigma = sc.broadcast(Sigma)
@@ -99,12 +99,11 @@ def evaluate_portfolios_rdd(
     b_rf = sc.broadcast(rf_rate)
     b_constraints = sc.broadcast(constraints)
     
-    # 2. Parallelize populasi portofolio (bobot) menjadi RDD
-    # Kita bagi menjadi beberapa partisi (misal 4 atau sesuai core CPU)
+    # 2. Parallelize the portfolio population list into RDD partitions
     num_partitions = max(4, sc.defaultParallelism)
     rdd_weights = sc.parallelize(portfolios, num_partitions)
     
-    # 3. RDD MAP: Hitung Sharpe Ratio & Metrik lainnya untuk tiap kombinasi portofolio
+    # 3. RDD MAP: Calculate Sharpe ratio and other metrics for each portfolio candidate
     # Input: w (weights) -> Output: (w, return, volatility, sharpe, max_drawdown)
     def map_metrics(w):
         ret, vol, sharpe, max_dd = calculate_portfolio_metrics(
@@ -114,16 +113,15 @@ def evaluate_portfolios_rdd(
         
     rdd_metrics = rdd_weights.map(map_metrics)
     
-    # 4. RDD FILTER: Buang portofolio yang tidak memenuhi constraint profil risiko
+    # 4. RDD FILTER: Prune portfolios violating risk profile boundaries
     # Constraints: max_saham, min_fixed, max_drawdown
     def filter_constraints(item):
         w, ret, vol, sharpe, max_dd = item
         cons = b_constraints.value
         
-        # Bobot Saham: diasumsikan aset indeks 2 dst adalah saham/emas
-        # Bobot Deposito (indeks 0) dan SBN (indeks 1) adalah fixed income
+        # Asset weights breakdown: index 0 and 1 are fixed income, index 2 onwards are stocks/gold
         fixed_weight = w[0] + w[1]
-        saham_weight = sum(w[2:]) # Saham + Emas dihitung dalam kategori risiko dinamis/saham
+        saham_weight = sum(w[2:]) # Stocks + Gold are grouped as dynamic/equity category
         
         if saham_weight > cons.get("max_saham", 1.0):
             return False
@@ -136,19 +134,19 @@ def evaluate_portfolios_rdd(
 
     rdd_filtered = rdd_metrics.filter(filter_constraints)
     
-    # Cache RDD terfilter karena kita akan melakukan collect dan reduce
+    # Cache filtered RDD as we perform both collect and reduce operations on it
     rdd_filtered.cache()
     
-    # Ambil semua hasil portofolio yang valid ke driver
+    # Collect valid portfolio statistics back to the driver node
     evaluated_list = rdd_filtered.collect()
     
-    # 5. RDD REDUCE: Cari portofolio terbaik dengan Sharpe Ratio tertinggi
+    # 5. RDD REDUCE: Locate the optimal portfolio containing the maximum Sharpe ratio
     best_portfolio = None
     if not rdd_filtered.isEmpty():
-        # Membandingkan Sharpe Ratio (indeks ke-3)
+        # Compare Sharpe Ratio values (index 3)
         best_portfolio = rdd_filtered.reduce(lambda a, b: a if a[3] > b[3] else b)
     
-    # Unpersist dan bersihkan broadcast
+    # Clean up RDD caches and broadcast variables
     rdd_filtered.unpersist()
     b_mu.unpersist()
     b_Sigma.unpersist()

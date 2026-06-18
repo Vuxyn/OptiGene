@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, rf_rate: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Evaluasi 1000 portofolio menggunakan Spark SQL.
+    Evaluates 1000 portfolios using Spark SQL.
     """
     P, N = portfolios.shape
     
-    # 1. Konversi portfolios ke DataFrame
-    # Skema: PortfolioId, AssetIdx, Weight
+    # 1. Convert portfolios to DataFrame
+    # Schema: PortfolioId, AssetIdx, Weight
     rows_w = []
     for p in range(P):
         for n in range(N):
@@ -27,12 +27,12 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
     df_w = spark.createDataFrame(rows_w, ["PortfolioId", "AssetIdx", "Weight"])
     df_w.createOrReplaceTempView("weights_tbl")
     
-    # 2. Konversi mu ke DataFrame
+    # 2. Convert expected returns vector (mu) to DataFrame
     rows_mu = [(int(n), float(mu[n])) for n in range(N)]
     df_mu = spark.createDataFrame(rows_mu, ["AssetIdx", "expected_return"])
     df_mu.createOrReplaceTempView("mu_tbl")
     
-    # 3. Konversi Sigma ke DataFrame
+    # 3. Convert Covariance Matrix (Sigma) to DataFrame
     rows_cov = []
     for r in range(N):
         for c in range(N):
@@ -40,7 +40,7 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
     df_cov = spark.createDataFrame(rows_cov, ["Asset1Idx", "Asset2Idx", "covariance"])
     df_cov.createOrReplaceTempView("cov_tbl")
     
-    # 4. Query SQL untuk menghitung return, volatilitas, dan sharpe secara paralel
+    # 4. Run SQL query to calculate expected returns, volatility, and Sharpe ratios in parallel
     query = f"""
         WITH PortReturns AS (
             SELECT w.PortfolioId, SUM(w.Weight * m.expected_return) AS port_return
@@ -68,10 +68,10 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
         ORDER BY r.PortfolioId
     """
     
-    # Jalankan query SQL
+    # Execute Spark SQL query
     result = spark.sql(query).collect()
     
-    # Ambil hasil ke numpy array
+    # Convert query outputs back into numpy arrays
     rets = np.zeros(P)
     vols = np.zeros(P)
     sharpes = np.zeros(P)
@@ -84,43 +84,43 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
         
     return rets, vols, sharpes
 
-def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_rel: np.ndarray, profile_name: str = "seimbang") -> pd.DataFrame:
+def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_rel: np.ndarray, profile_name: str = "balanced") -> pd.DataFrame:
     """
-    Menjalankan perbandingan performa 6 metode evaluasi Sharpe Ratio pada 1000 kombinasi portofolio.
+    Compares the computational performance of 6 execution methods for evaluating Sharpe ratios of 1000 portfolios.
     """
-    # 1. Inisialisasi Spark Session
+    # 1. Initialize Spark Session
     spark = get_spark_session()
     
-    # 2. Siapkan 1000 kombinasi portofolio secara acak (bobot)
+    # 2. Prepare 1000 random portfolio weights
     np.random.seed(42)
     P = 1000
     N = len(mu)
     portfolios = np.random.rand(P, N)
     for p in range(P):
-        # Normalisasi
+        # Normalize weights to sum up to 1.0
         portfolios[p] = portfolios[p] / np.sum(portfolios[p])
         
-    # Ambil BI Rate sebagai RF Rate
+    # Get the risk-free rate using the BI Rate
     rf_rate = mu[0] if mu[0] > 0 else 0.05
     cons = get_constraints(profile_name)
     
     results = []
     
-    logger.info(f"--- MEMULAI BENCHMARK 6 METODE (N={N}, P={P}) ---")
+    logger.info(f"--- STARTING 6-METHOD PERFORMANCE BENCHMARK (N={N}, P={P}) ---")
     
     # ==========================================
-    # Metode 1: Sekuensial Python (For Loop)
+    # Method 1: Sequential Python (For Loop)
     # ==========================================
     t_start = time.perf_counter()
     rets1, vols1, sharpes1 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="sequential")
-    # Cari portfolio terbaik (secara sekuensial)
-    # Filter constraints
+    # Search for the optimal portfolio sequentially
+    # Filter by constraints
     best_sharpe1 = -999.0
     best_idx1 = -1
     for i in range(P):
         fixed_w = portfolios[i, 0] + portfolios[i, 1]
         saham_w = np.sum(portfolios[i, 2:])
-        # Cek max drawdown historis
+        # Verify historical maximum drawdown
         port_vals = np.dot(P_rel, portfolios[i])
         cum_max = np.maximum.accumulate(port_vals)
         max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
@@ -131,15 +131,15 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
                 best_idx1 = i
     t_seq = time.perf_counter() - t_start
     best_w1 = portfolios[best_idx1] if best_idx1 != -1 else np.zeros(N)
-    logger.info(f"Metode 1: Sekuensial Python selesai dalam {t_seq:.4f} detik (Best Sharpe: {best_sharpe1:.4f})")
-    results.append({"Method": "Sekuensial Python", "Time (s)": t_seq, "Best Sharpe": best_sharpe1})
+    logger.info(f"Method 1: Sequential Python completed in {t_seq:.4f} seconds (Best Sharpe: {best_sharpe1:.4f})")
+    results.append({"Method": "Sequential Python", "Time (s)": t_seq, "Best Sharpe": best_sharpe1})
     
     # ==========================================
-    # Metode 2: PySpark SQL Query
+    # Method 2: PySpark SQL Query
     # ==========================================
     t_start = time.perf_counter()
     rets2, vols2, sharpes2 = evaluate_portfolios_spark_sql(spark, portfolios, mu, Sigma, rf_rate)
-    # Cari terbaik
+    # Search for the optimal portfolio
     best_sharpe2 = -999.0
     best_idx2 = -1
     for i in range(P):
@@ -155,11 +155,11 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
                 best_idx2 = i
     t_sql = time.perf_counter() - t_start
     best_w2 = portfolios[best_idx2] if best_idx2 != -1 else np.zeros(N)
-    logger.info(f"Metode 2: PySpark SQL selesai dalam {t_sql:.4f} detik (Best Sharpe: {best_sharpe2:.4f})")
+    logger.info(f"Method 2: PySpark SQL Query completed in {t_sql:.4f} seconds (Best Sharpe: {best_sharpe2:.4f})")
     results.append({"Method": "PySpark SQL Query", "Time (s)": t_sql, "Best Sharpe": best_sharpe2})
-
+ 
     # ==========================================
-    # Metode 3: PySpark RDD map
+    # Method 3: PySpark RDD map
     # ==========================================
     t_start = time.perf_counter()
     rets3, vols3, sharpes3 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cpu", spark=spark)
@@ -178,26 +178,26 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
                 best_idx3 = i
     t_rdd_map = time.perf_counter() - t_start
     best_w3 = portfolios[best_idx3] if best_idx3 != -1 else np.zeros(N)
-    logger.info(f"Metode 3: PySpark RDD map selesai dalam {t_rdd_map:.4f} detik (Best Sharpe: {best_sharpe3:.4f})")
+    logger.info(f"Method 3: PySpark RDD map completed in {t_rdd_map:.4f} seconds (Best Sharpe: {best_sharpe3:.4f})")
     results.append({"Method": "PySpark RDD map", "Time (s)": t_rdd_map, "Best Sharpe": best_sharpe3})
-
+ 
     # ==========================================
-    # Metode 4: PySpark RDD filter + reduce
+    # Method 4: PySpark RDD filter + reduce
     # ==========================================
     t_start = time.perf_counter()
-    # Menggunakan modul pyspark/context.py langsung
+    # Directly use RDD functions inside pyspark/context.py
     valid_list, rdd_best = evaluate_portfolios_rdd(spark, portfolios, mu, Sigma, P_rel, cons, rf_rate)
     t_rdd_fr = time.perf_counter() - t_start
     best_sharpe4 = rdd_best[3] if rdd_best is not None else -999.0
     best_w4 = rdd_best[0] if rdd_best is not None else np.zeros(N)
-    logger.info(f"Metode 4: PySpark RDD filter+reduce selesai dalam {t_rdd_fr:.4f} detik (Best Sharpe: {best_sharpe4:.4f})")
+    logger.info(f"Method 4: PySpark RDD filter+reduce completed in {t_rdd_fr:.4f} seconds (Best Sharpe: {best_sharpe4:.4f})")
     results.append({"Method": "PySpark RDD filter + reduce", "Time (s)": t_rdd_fr, "Best Sharpe": best_sharpe4})
-
+ 
     # ==========================================
-    # Metode 5: CUDA Murni (GPU)
+    # Method 5: Pure CUDA (GPU)
     # ==========================================
     t_start = time.perf_counter()
-    # Panggil fungsi GPU
+    # Execute on GPU via CuPy
     if CUDA_AVAILABLE:
         rets5, vols5, sharpes5 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="cuda")
         best_sharpe5 = -999.0
@@ -215,16 +215,16 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
                     best_idx5 = i
         t_cuda = time.perf_counter() - t_start
         best_w5 = portfolios[best_idx5] if best_idx5 != -1 else np.zeros(N)
-        logger.info(f"Metode 5: CUDA murni GPU selesai dalam {t_cuda:.4f} detik (Best Sharpe: {best_sharpe5:.4f})")
+        logger.info(f"Method 5: Pure CUDA completed in {t_cuda:.4f} seconds (Best Sharpe: {best_sharpe5:.4f})")
     else:
-        logger.warning("Metode 5 (CUDA GPU) diskip karena CUDA tidak tersedia.")
+        logger.warning("Method 5 (Pure CUDA GPU) skipped due to missing CUDA resources.")
         t_cuda = np.nan
         best_sharpe5 = np.nan
         best_w5 = np.zeros(N)
-    results.append({"Method": "CUDA murni", "Time (s)": t_cuda, "Best Sharpe": best_sharpe5})
-
+    results.append({"Method": "Pure CUDA (GPU)", "Time (s)": t_cuda, "Best Sharpe": best_sharpe5})
+ 
     # ==========================================
-    # Metode 6: PySpark + CUDA (Hybrid)
+    # Method 6: PySpark + CUDA (Hybrid)
     # ==========================================
     t_start = time.perf_counter()
     rets6, vols6, sharpes6 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cuda", spark=spark)
@@ -243,34 +243,34 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
                 best_idx6 = i
     t_hybrid = time.perf_counter() - t_start
     best_w6 = portfolios[best_idx6] if best_idx6 != -1 else np.zeros(N)
-    logger.info(f"Metode 6: PySpark + CUDA hybrid selesai dalam {t_hybrid:.4f} detik (Best Sharpe: {best_sharpe6:.4f})")
+    logger.info(f"Method 6: PySpark + CUDA hybrid completed in {t_hybrid:.4f} seconds (Best Sharpe: {best_sharpe6:.4f})")
     results.append({"Method": "PySpark + CUDA", "Time (s)": t_hybrid, "Best Sharpe": best_sharpe6})
-
+ 
     # ==========================================
-    # Verifikasi Kesamaan Hasil (Presisi)
+    # Verify Numerical Output Consistency
     # ==========================================
-    logger.info("--- MEMULAI VERIFIKASI KESAMAAN HASIL METODE ---")
+    logger.info("--- STARTING NUMERICAL CONSISTENCY VERIFICATION ---")
     valid_sharpes = [best_sharpe1, best_sharpe2, best_sharpe3, best_sharpe4, best_sharpe6]
     if CUDA_AVAILABLE:
         valid_sharpes.append(best_sharpe5)
         
     diff = max(valid_sharpes) - min(valid_sharpes)
-    logger.info(f"Perbedaan Sharpe Ratio Maksimal antar Metode: {diff:.8f}")
+    logger.info(f"Maximum Sharpe Ratio difference across methods: {diff:.8f}")
     if diff < 1e-4:
-        logger.info("VERIFIKASI SUCCESS: Semua metode menghasilkan nilai Sharpe Ratio yang identik! ✅")
+        logger.info("VERIFICATION SUCCESS: All execution methods yielded identical optimal Sharpe ratios! ✅")
     else:
-        logger.warning("VERIFIKASI WARNING: Terdapat perbedaan hasil Sharpe Ratio yang cukup signifikan antar metode.")
-
-    # 3. Hitung Speedup
+        logger.warning("VERIFICATION WARNING: Significant numerical discrepancies found between methods.")
+ 
+    # 3. Calculate Speedup
     df_res = pd.DataFrame(results)
     df_res["Speedup"] = df_res["Time (s)"].iloc[0] / df_res["Time (s)"]
     
-    # 4. Simpan ke CSV
+    # 4. Save results to CSV cache
     res_dir = "d:/INFORMATICS/SEMESTER 4/PARALLEL PROCESSING/Spark/backend/results"
     if not os.path.exists(res_dir):
         os.makedirs(res_dir)
     csv_path = os.path.join(res_dir, "benchmark.csv")
     df_res.to_csv(csv_path, index=False)
-    logger.info(f"Hasil benchmark disimpan ke {csv_path}")
+    logger.info(f"Benchmark results successfully written to: {csv_path}")
     
     return df_res
