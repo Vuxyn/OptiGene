@@ -138,70 +138,11 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
     # Method 2: PySpark SQL Query
     # ==========================================
     t_start = time.perf_counter()
-    rets2, vols2, sharpes2 = evaluate_portfolios_spark_sql(spark, portfolios, mu, Sigma, rf_rate)
-    # Search for the optimal portfolio
-    best_sharpe2 = -999.0
-    best_idx2 = -1
-    for i in range(P):
-        fixed_w = portfolios[i, 0] + portfolios[i, 1]
-        saham_w = np.sum(portfolios[i, 2:])
-        port_vals = np.dot(P_rel, portfolios[i])
-        cum_max = np.maximum.accumulate(port_vals)
-        max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
-        
-        if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
-            if sharpes2[i] > best_sharpe2:
-                best_sharpe2 = sharpes2[i]
-                best_idx2 = i
-    t_sql = time.perf_counter() - t_start
-    best_w2 = portfolios[best_idx2] if best_idx2 != -1 else np.zeros(N)
-    logger.info(f"Method 2: PySpark SQL Query completed in {t_sql:.4f} seconds (Best Sharpe: {best_sharpe2:.4f})")
-    results.append({"Method": "PySpark SQL Query", "Time (s)": t_sql, "Best Sharpe": best_sharpe2})
- 
-    # ==========================================
-    # Method 3: PySpark RDD map
-    # ==========================================
-    t_start = time.perf_counter()
-    rets3, vols3, sharpes3 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cpu", spark=spark)
-    best_sharpe3 = -999.0
-    best_idx3 = -1
-    for i in range(P):
-        fixed_w = portfolios[i, 0] + portfolios[i, 1]
-        saham_w = np.sum(portfolios[i, 2:])
-        port_vals = np.dot(P_rel, portfolios[i])
-        cum_max = np.maximum.accumulate(port_vals)
-        max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
-        
-        if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
-            if sharpes3[i] > best_sharpe3:
-                best_sharpe3 = sharpes3[i]
-                best_idx3 = i
-    t_rdd_map = time.perf_counter() - t_start
-    best_w3 = portfolios[best_idx3] if best_idx3 != -1 else np.zeros(N)
-    logger.info(f"Method 3: PySpark RDD map completed in {t_rdd_map:.4f} seconds (Best Sharpe: {best_sharpe3:.4f})")
-    results.append({"Method": "PySpark RDD map", "Time (s)": t_rdd_map, "Best Sharpe": best_sharpe3})
- 
-    # ==========================================
-    # Method 4: PySpark RDD filter + reduce
-    # ==========================================
-    t_start = time.perf_counter()
-    # Directly use RDD functions inside pyspark/context.py
-    valid_list, rdd_best = evaluate_portfolios_rdd(spark, portfolios, mu, Sigma, P_rel, cons, rf_rate)
-    t_rdd_fr = time.perf_counter() - t_start
-    best_sharpe4 = rdd_best[3] if rdd_best is not None else -999.0
-    best_w4 = rdd_best[0] if rdd_best is not None else np.zeros(N)
-    logger.info(f"Method 4: PySpark RDD filter+reduce completed in {t_rdd_fr:.4f} seconds (Best Sharpe: {best_sharpe4:.4f})")
-    results.append({"Method": "PySpark RDD filter + reduce", "Time (s)": t_rdd_fr, "Best Sharpe": best_sharpe4})
- 
-    # ==========================================
-    # Method 5: Pure CUDA (GPU)
-    # ==========================================
-    t_start = time.perf_counter()
-    # Execute on GPU via CuPy
-    if CUDA_AVAILABLE:
-        rets5, vols5, sharpes5 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="cuda")
-        best_sharpe5 = -999.0
-        best_idx5 = -1
+    try:
+        rets2, vols2, sharpes2 = evaluate_portfolios_spark_sql(spark, portfolios, mu, Sigma, rf_rate)
+        # Search for the optimal portfolio
+        best_sharpe2 = -999.0
+        best_idx2 = -1
         for i in range(P):
             fixed_w = portfolios[i, 0] + portfolios[i, 1]
             saham_w = np.sum(portfolios[i, 2:])
@@ -210,14 +151,97 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
             max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
             
             if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
-                if sharpes5[i] > best_sharpe5:
-                    best_sharpe5 = sharpes5[i]
-                    best_idx5 = i
-        t_cuda = time.perf_counter() - t_start
-        best_w5 = portfolios[best_idx5] if best_idx5 != -1 else np.zeros(N)
-        logger.info(f"Method 5: Pure CUDA completed in {t_cuda:.4f} seconds (Best Sharpe: {best_sharpe5:.4f})")
-    else:
-        logger.warning("Method 5 (Pure CUDA GPU) skipped due to missing CUDA resources.")
+                if sharpes2[i] > best_sharpe2:
+                    best_sharpe2 = sharpes2[i]
+                    best_idx2 = i
+        t_sql = time.perf_counter() - t_start
+        best_w2 = portfolios[best_idx2] if best_idx2 != -1 else np.zeros(N)
+        logger.info(f"Method 2: PySpark SQL Query completed in {t_sql:.4f} seconds (Best Sharpe: {best_sharpe2:.4f})")
+    except Exception as e:
+        logger.error(f"Method 2 (PySpark SQL Query) failed: {e}")
+        t_sql = np.nan
+        best_sharpe2 = np.nan
+        best_w2 = np.zeros(N)
+    results.append({"Method": "PySpark SQL Query", "Time (s)": t_sql, "Best Sharpe": best_sharpe2})
+ 
+    # ==========================================
+    # Method 3: PySpark RDD map
+    # ==========================================
+    t_start = time.perf_counter()
+    try:
+        rets3, vols3, sharpes3 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cpu", spark=spark, allow_fallback=False)
+        best_sharpe3 = -999.0
+        best_idx3 = -1
+        for i in range(P):
+            fixed_w = portfolios[i, 0] + portfolios[i, 1]
+            saham_w = np.sum(portfolios[i, 2:])
+            port_vals = np.dot(P_rel, portfolios[i])
+            cum_max = np.maximum.accumulate(port_vals)
+            max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
+            
+            if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
+                if sharpes3[i] > best_sharpe3:
+                    best_sharpe3 = sharpes3[i]
+                    best_idx3 = i
+        t_rdd_map = time.perf_counter() - t_start
+        best_w3 = portfolios[best_idx3] if best_idx3 != -1 else np.zeros(N)
+        logger.info(f"Method 3: PySpark RDD map completed in {t_rdd_map:.4f} seconds (Best Sharpe: {best_sharpe3:.4f})")
+    except Exception as e:
+        logger.error(f"Method 3 (PySpark RDD map) failed: {e}")
+        t_rdd_map = np.nan
+        best_sharpe3 = np.nan
+        best_w3 = np.zeros(N)
+    results.append({"Method": "PySpark RDD map", "Time (s)": t_rdd_map, "Best Sharpe": best_sharpe3})
+ 
+    # ==========================================
+    # Method 4: PySpark RDD filter + reduce
+    # ==========================================
+    t_start = time.perf_counter()
+    try:
+        # Directly use RDD functions inside pyspark/context.py
+        valid_list, rdd_best = evaluate_portfolios_rdd(spark, portfolios, mu, Sigma, P_rel, cons, rf_rate)
+        t_rdd_fr = time.perf_counter() - t_start
+        best_sharpe4 = rdd_best[3] if rdd_best is not None else -999.0
+        best_w4 = rdd_best[0] if rdd_best is not None else np.zeros(N)
+        logger.info(f"Method 4: PySpark RDD filter+reduce completed in {t_rdd_fr:.4f} seconds (Best Sharpe: {best_sharpe4:.4f})")
+    except Exception as e:
+        logger.error(f"Method 4 (PySpark RDD filter + reduce) failed: {e}")
+        t_rdd_fr = np.nan
+        best_sharpe4 = np.nan
+        best_w4 = np.zeros(N)
+    results.append({"Method": "PySpark RDD filter + reduce", "Time (s)": t_rdd_fr, "Best Sharpe": best_sharpe4})
+ 
+    # ==========================================
+    # Method 5: Pure CUDA (GPU)
+    # ==========================================
+    t_start = time.perf_counter()
+    try:
+        # Execute on GPU via CuPy
+        if CUDA_AVAILABLE:
+            rets5, vols5, sharpes5 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="cuda", allow_fallback=False)
+            best_sharpe5 = -999.0
+            best_idx5 = -1
+            for i in range(P):
+                fixed_w = portfolios[i, 0] + portfolios[i, 1]
+                saham_w = np.sum(portfolios[i, 2:])
+                port_vals = np.dot(P_rel, portfolios[i])
+                cum_max = np.maximum.accumulate(port_vals)
+                max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
+                
+                if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
+                    if sharpes5[i] > best_sharpe5:
+                        best_sharpe5 = sharpes5[i]
+                        best_idx5 = i
+            t_cuda = time.perf_counter() - t_start
+            best_w5 = portfolios[best_idx5] if best_idx5 != -1 else np.zeros(N)
+            logger.info(f"Method 5: Pure CUDA completed in {t_cuda:.4f} seconds (Best Sharpe: {best_sharpe5:.4f})")
+        else:
+            logger.warning("Method 5 (Pure CUDA GPU) skipped due to missing CUDA resources.")
+            t_cuda = np.nan
+            best_sharpe5 = np.nan
+            best_w5 = np.zeros(N)
+    except Exception as e:
+        logger.error(f"Method 5 (Pure CUDA GPU) failed: {e}")
         t_cuda = np.nan
         best_sharpe5 = np.nan
         best_w5 = np.zeros(N)
@@ -227,39 +251,51 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
     # Method 6: PySpark + CUDA (Hybrid)
     # ==========================================
     t_start = time.perf_counter()
-    rets6, vols6, sharpes6 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cuda", spark=spark)
-    best_sharpe6 = -999.0
-    best_idx6 = -1
-    for i in range(P):
-        fixed_w = portfolios[i, 0] + portfolios[i, 1]
-        saham_w = np.sum(portfolios[i, 2:])
-        port_vals = np.dot(P_rel, portfolios[i])
-        cum_max = np.maximum.accumulate(port_vals)
-        max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
-        
-        if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
-            if sharpes6[i] > best_sharpe6:
-                best_sharpe6 = sharpes6[i]
-                best_idx6 = i
-    t_hybrid = time.perf_counter() - t_start
-    best_w6 = portfolios[best_idx6] if best_idx6 != -1 else np.zeros(N)
-    logger.info(f"Method 6: PySpark + CUDA hybrid completed in {t_hybrid:.4f} seconds (Best Sharpe: {best_sharpe6:.4f})")
+    try:
+        rets6, vols6, sharpes6 = evaluate_population(portfolios, mu, Sigma, rf_rate, mode="pyspark_cuda", spark=spark, allow_fallback=False)
+        best_sharpe6 = -999.0
+        best_idx6 = -1
+        for i in range(P):
+            fixed_w = portfolios[i, 0] + portfolios[i, 1]
+            saham_w = np.sum(portfolios[i, 2:])
+            port_vals = np.dot(P_rel, portfolios[i])
+            cum_max = np.maximum.accumulate(port_vals)
+            max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
+            
+            if saham_w <= cons["max_saham"] and fixed_w >= cons["min_fixed"] and max_dd <= cons["max_drawdown"]:
+                if sharpes6[i] > best_sharpe6:
+                    best_sharpe6 = sharpes6[i]
+                    best_idx6 = i
+        t_hybrid = time.perf_counter() - t_start
+        best_w6 = portfolios[best_idx6] if best_idx6 != -1 else np.zeros(N)
+        logger.info(f"Method 6: PySpark + CUDA hybrid completed in {t_hybrid:.4f} seconds (Best Sharpe: {best_sharpe6:.4f})")
+    except Exception as e:
+        logger.error(f"Method 6 (PySpark + CUDA) failed: {e}")
+        t_hybrid = np.nan
+        best_sharpe6 = np.nan
+        best_w6 = np.zeros(N)
     results.append({"Method": "PySpark + CUDA", "Time (s)": t_hybrid, "Best Sharpe": best_sharpe6})
  
     # ==========================================
     # Verify Numerical Output Consistency
     # ==========================================
     logger.info("--- STARTING NUMERICAL CONSISTENCY VERIFICATION ---")
-    valid_sharpes = [best_sharpe1, best_sharpe2, best_sharpe3, best_sharpe4, best_sharpe6]
-    if CUDA_AVAILABLE:
+    valid_sharpes = []
+    for val in [best_sharpe1, best_sharpe2, best_sharpe3, best_sharpe4, best_sharpe6]:
+        if val is not None and not np.isnan(val) and not np.isinf(val) and val > -900:
+            valid_sharpes.append(val)
+    if CUDA_AVAILABLE and best_sharpe5 is not None and not np.isnan(best_sharpe5) and not np.isinf(best_sharpe5) and best_sharpe5 > -900:
         valid_sharpes.append(best_sharpe5)
         
-    diff = max(valid_sharpes) - min(valid_sharpes)
-    logger.info(f"Maximum Sharpe Ratio difference across methods: {diff:.8f}")
-    if diff < 1e-4:
-        logger.info("VERIFICATION SUCCESS: All execution methods yielded identical optimal Sharpe ratios! ✅")
+    if len(valid_sharpes) > 1:
+        diff = max(valid_sharpes) - min(valid_sharpes)
+        logger.info(f"Maximum Sharpe Ratio difference across methods: {diff:.8f}")
+        if diff < 1e-4:
+            logger.info("VERIFICATION SUCCESS: All executed methods yielded identical optimal Sharpe ratios! ✅")
+        else:
+            logger.warning("VERIFICATION WARNING: Significant numerical discrepancies found between methods.")
     else:
-        logger.warning("VERIFICATION WARNING: Significant numerical discrepancies found between methods.")
+        logger.info("Skipping consistency verification as less than 2 methods completed successfully.")
  
     # 3. Calculate Speedup
     df_res = pd.DataFrame(results)

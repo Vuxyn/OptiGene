@@ -1,3 +1,5 @@
+import os
+import sys
 from pyspark.sql import SparkSession
 import logging
 
@@ -13,6 +15,11 @@ def get_spark_session(app_name: str = "OptiGene") -> SparkSession:
     if _spark is None:
         try:
             logger.info("Initializing SparkSession...")
+            
+            # Set Python path to ensure worker nodes match the active conda environment Python
+            os.environ["PYSPARK_PYTHON"] = sys.executable
+            os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+            
             _spark = SparkSession.builder \
                 .appName(app_name) \
                 .master("local[*]") \
