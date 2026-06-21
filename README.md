@@ -4,7 +4,7 @@ OptiGene is an interactive portfolio optimization web application designed to he
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Dynamic Data Ingestion**: Live web scraping of the Central Bank's BI-Rate (for time deposits) and 10-Year Government SBN Bond yields, combined with historical equity and commodity price retrieval via Yahoo Finance.
 * **Genetic Algorithm Engine**: Heuristic portfolio optimization maximizing the **Sharpe Ratio** while strictly enforcing bounds on stock exposure and maximum drawdown penalties based on investor risk profiles (*Safe*, *Balanced*, or *Aggressive*).
@@ -19,7 +19,7 @@ OptiGene is an interactive portfolio optimization web application designed to he
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -43,7 +43,7 @@ graph TD
 
 ---
 
-## 🛠️ Project Structure
+## Project Structure
 
 ```
 portfolio-optimizer/
@@ -63,7 +63,7 @@ portfolio-optimizer/
 
 ---
 
-## ⚙️ Getting Started & Installation
+## Getting Started & Installation
 
 ### Prerequisites
 * Python 3.11
@@ -86,7 +86,7 @@ cd ..
 
 ---
 
-## 🏃 Running the Application
+## Running the Application
 
 For convenience, startup scripts are provided in the root directory.
 
@@ -106,7 +106,7 @@ run_project.bat
 
 ---
 
-## 📓 Running the Notebook Demo
+## Running the Notebook Demo
 To test or present the system interactively, open the Jupyter Notebook:
 1. Open the workspace in your IDE or launch Jupyter Lab.
 2. Select the `spark311` Python kernel.
