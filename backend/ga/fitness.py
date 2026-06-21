@@ -106,7 +106,6 @@ def evaluate_population(
             # Collect results
             results = rdd_weights.map(map_pyspark_metrics).collect()
             
-            # Clean up broadcasts
             b_mu.unpersist()
             b_Sigma.unpersist()
             b_rf.unpersist()
@@ -121,7 +120,7 @@ def evaluate_population(
             return cpu_evaluate_portfolios(population, mu, Sigma, rf_rate)
 
     elif mode_clean == "pyspark_cuda":
-        # Hybrid: RDD mapPartitions + CuPy on GPU (highly scalable)
+        # Hybrid: RDD mapPartitions + CuPy on GPU
         if spark is None:
             raise ValueError("SparkSession must be provided for pyspark_cuda mode")
             
@@ -138,22 +137,16 @@ def evaluate_population(
                 if not weights_list:
                     return []
                 
-                # Convert to numpy array for batch evaluation (chunk)
                 weights_arr = np.array(weights_list)
-                
-                # Try to import CuPy on worker node
                 try:
                     import cupy as cp
                     
-                    # Import kernels dynamically
                     from backend.cuda.kernels import gpu_evaluate_portfolios
                     rets, vols, sharpes = gpu_evaluate_portfolios(
                         weights_arr, b_mu.value, b_Sigma.value, b_rf.value
                     )
-                    # Return as list of tuples
                     return list(zip(rets.tolist(), vols.tolist(), sharpes.tolist()))
                 except Exception as ex:
-                    # Fallback to CPU numpy if the worker lacks GPU or CuPy libraries
                     rets, vols, sharpes = cpu_evaluate_portfolios(
                         weights_arr, b_mu.value, b_Sigma.value, b_rf.value
                     )

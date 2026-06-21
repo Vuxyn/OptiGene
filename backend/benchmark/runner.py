@@ -6,6 +6,7 @@ import logging
 from backend.pyspark.session import get_spark_session
 from backend.ga.fitness import evaluate_population
 from backend.ga.constraints import get_constraints
+from backend.ga.optimizer import repair_portfolio_weights
 from backend.pyspark.context import evaluate_portfolios_rdd
 from backend.cuda.kernels import CUDA_AVAILABLE
 
@@ -13,11 +14,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, rf_rate: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Evaluates 1000 portfolios using Spark SQL.
-    """
     P, N = portfolios.shape
-    
+
     # 1. Convert portfolios to DataFrame
     # Schema: PortfolioId, AssetIdx, Weight
     rows_w = []
@@ -68,10 +66,8 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
         ORDER BY r.PortfolioId
     """
     
-    # Execute Spark SQL query
     result = spark.sql(query).collect()
     
-    # Convert query outputs back into numpy arrays
     rets = np.zeros(P)
     vols = np.zeros(P)
     sharpes = np.zeros(P)
@@ -85,9 +81,6 @@ def evaluate_portfolios_spark_sql(spark, portfolios: np.ndarray, mu: np.ndarray,
     return rets, vols, sharpes
 
 def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_rel: np.ndarray, profile_name: str = "balanced") -> pd.DataFrame:
-    """
-    Compares the computational performance of 6 execution methods for evaluating Sharpe ratios of 1000 portfolios.
-    """
     # 1. Initialize Spark Session
     spark = get_spark_session()
     
@@ -97,10 +90,8 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
     N = len(mu)
     portfolios = np.random.rand(P, N)
     for p in range(P):
-        # Normalize weights to sum up to 1.0
-        portfolios[p] = portfolios[p] / np.sum(portfolios[p])
+        portfolios[p] = repair_portfolio_weights(portfolios[p], profile_name)
         
-    # Get the risk-free rate using the BI Rate
     rf_rate = mu[0] if mu[0] > 0 else 0.05
     cons = get_constraints(profile_name)
     
@@ -120,7 +111,6 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
     for i in range(P):
         fixed_w = portfolios[i, 0] + portfolios[i, 1]
         saham_w = np.sum(portfolios[i, 2:])
-        # Verify historical maximum drawdown
         port_vals = np.dot(P_rel, portfolios[i])
         cum_max = np.maximum.accumulate(port_vals)
         max_dd = np.max((cum_max - port_vals) / cum_max) if len(port_vals) > 0 else 0.0
@@ -140,7 +130,6 @@ def run_benchmark(df_prices: pd.DataFrame, mu: np.ndarray, Sigma: np.ndarray, P_
     t_start = time.perf_counter()
     try:
         rets2, vols2, sharpes2 = evaluate_portfolios_spark_sql(spark, portfolios, mu, Sigma, rf_rate)
-        # Search for the optimal portfolio
         best_sharpe2 = -999.0
         best_idx2 = -1
         for i in range(P):

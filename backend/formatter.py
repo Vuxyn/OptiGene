@@ -1,7 +1,21 @@
+def format_idr(val: float) -> str:
+    return f"Rp {val:,.0f}".replace(",", ".")
+
+def _clean_asset_name(name: str) -> str:
+    name_upper = name.upper()
+    if name_upper == "DEPOSITO":
+        return "Deposito"
+    elif "SBN" in name_upper or "ORI" in name_upper:
+        return "Obligasi SBN"
+    elif name_upper == "GOLD" or "EMAS" in name_upper:
+        return "Emas (ANTM)"
+    else:
+        return name.replace(".JK", "").replace(".jk", "")
+
 def format_layman_results(results: dict, capital: float, duration_years: int = 1) -> dict:
     """
     Converts technical portfolio optimization results into a layman-friendly format
-    understandable by investment beginners.
+    understandable by investment beginners in Indonesian.
     """
     weights = results["weights"]
     expected_return = results["return"]
@@ -13,15 +27,16 @@ def format_layman_results(results: dict, capital: float, duration_years: int = 1
     allocation_details = []
     
     # Category labels
-    asset_names = results.get("asset_names", ["Time Deposit", "Government Bonds (SBN)", "Gold (ANTM)"] + [f"Stock {i}" for i in range(len(weights)-3)])
+    asset_names = results.get("asset_names", ["Deposito", "Obligasi SBN", "Emas (ANTM)"] + [f"Saham {i}" for i in range(len(weights)-3)])
     
     for name, weight in zip(asset_names, weights):
         if weight > 0.001:  # Display only if allocation > 0.1%
             allocated_money = capital * weight
+            clean_name = _clean_asset_name(name)
             allocation_details.append({
-                "asset": name,
+                "asset": clean_name,
                 "percentage": f"{weight * 100:.2f}%",
-                "nominal": f"IDR {allocated_money:,.0f}",
+                "nominal": format_idr(allocated_money),
                 "description": _get_asset_description(name)
             })
             
@@ -32,24 +47,24 @@ def format_layman_results(results: dict, capital: float, duration_years: int = 1
     compounded_profit = compounded_value - capital
     
     layman_return = {
-        "percentage": f"{expected_return * 100:.2f}% per year",
-        "description": f"Your capital of IDR {capital:,.0f} is projected to grow to IDR {compounded_value:,.0f} in {duration_years} year(s) (accumulating a profit of IDR {compounded_profit:,.0f}).",
-        "summary": f"Estimated profit: +IDR {annual_profit:,.0f}/year"
+        "percentage": f"{expected_return * 100:.2f}% per tahun",
+        "description": f"Modal Anda sebesar {format_idr(capital)} diproyeksikan tumbuh menjadi {format_idr(compounded_value)} dalam {duration_years} tahun (akumulasi keuntungan sebesar {format_idr(compounded_profit)}).",
+        "summary": f"Estimasi profit: +{format_idr(annual_profit)}/tahun"
     }
     
     # 3. Format Risk (Volatility)
     if volatility < 0.05:
-        vol_label = "Very Low (Safe)"
-        vol_desc = "Price fluctuations are extremely minor. Highly stable, behaving similarly to a standard savings account."
+        vol_label = "Sangat Rendah (Aman)"
+        vol_desc = "Fluktuasi harga sangat kecil. Sangat stabil, mirip dengan tabungan biasa."
     elif volatility < 0.10:
-        vol_label = "Low (Stable)"
-        vol_desc = "Small price fluctuations. Suitable for investors who prefer stable growth without sudden value drops."
+        vol_label = "Rendah (Stabil)"
+        vol_desc = "Fluktuasi harga kecil. Cocok untuk investor yang menginginkan pertumbuhan stabil tanpa penurunan nilai yang mendadak."
     elif volatility < 0.18:
-        vol_label = "Medium (Moderate)"
-        vol_desc = "Normal price fluctuations. Expect moderate short-term variations with reliable medium-term security."
+        vol_label = "Sedang (Moderat)"
+        vol_desc = "Fluktuasi harga normal. Mengalami pergerakan jangka pendek yang moderat namun relatif aman dalam jangka menengah."
     else:
-        vol_label = "High (Aggressive)"
-        vol_desc = "Prices fluctuate rapidly. High return potential, but require tolerance for significant market swings."
+        vol_label = "Tinggi (Agresif)"
+        vol_desc = "Harga berfluktuasi cepat. Potensi keuntungan tinggi, namun membutuhkan kesiapan mental menghadapi penurunan pasar."
         
     layman_volatility = {
         "label": vol_label,
@@ -61,23 +76,23 @@ def format_layman_results(results: dict, capital: float, duration_years: int = 1
     potential_loss = capital * max_dd
     layman_drawdown = {
         "percentage": f"{max_dd * 100:.2f}%",
-        "nominal": f"IDR {potential_loss:,.0f}",
-        "description": f"In the worst-case historical market scenario (e.g., a financial crisis), this portfolio experienced a maximum temporary drop of {max_dd * 100:.1f}%, equivalent to IDR {potential_loss:,.0f}. However, this decline was temporary before recovering."
+        "nominal": format_idr(potential_loss),
+        "description": f"Dalam skenario terburuk pasar secara historis (seperti krisis keuangan), portofolio ini mengalami penurunan sementara maksimum sebesar {max_dd * 100:.1f}%, atau setara dengan {format_idr(potential_loss)}. Penurunan ini bersifat sementara sebelum nilainya kembali pulih."
     }
     
     # 5. Format Portfolio Efficiency (Sharpe Ratio)
     if sharpe < 0.5:
-        sharpe_label = "Low Efficiency"
-        sharpe_desc = "The expected returns do not sufficiently compensate for the level of risk taken."
+        sharpe_label = "Efisiensi Rendah"
+        sharpe_desc = "Potensi keuntungan yang diharapkan kurang sebanding dengan tingkat risiko yang diambil."
     elif sharpe < 1.2:
-        sharpe_label = "Fair Trade-off"
-        sharpe_desc = "A balanced portfolio combination where the returns are fair relative to the volatility."
+        sharpe_label = "Keseimbangan Cukup"
+        sharpe_desc = "Kombinasi portofolio seimbang di mana return sebanding dengan tingkat volatilitas."
     elif sharpe < 2.0:
-        sharpe_label = "Highly Efficient"
-        sharpe_desc = "Extremely efficient! The algorithm found an optimal mix that maximizes returns while keeping volatility low."
+        sharpe_label = "Efisiensi Tinggi"
+        sharpe_desc = "Sangat efisien! Algoritma menemukan kombinasi optimal yang memaksimalkan return dengan volatilitas rendah."
     else:
-        sharpe_label = "Outstandingly Optimal"
-        sharpe_desc = "Superb portfolio design! Exceptional returns achieved with highly controlled overall risk."
+        sharpe_label = "Sangat Optimal"
+        sharpe_desc = "Desain portofolio luar biasa! Keuntungan maksimal dicapai dengan risiko keseluruhan yang sangat terkendali."
         
     layman_sharpe = {
         "value": f"{sharpe:.2f}",
@@ -87,11 +102,11 @@ def format_layman_results(results: dict, capital: float, duration_years: int = 1
     
     # 6. Format GA Insight
     layman_ga = {
-        "insight": "Our system simulated and evaluated over 100,000 portfolio combinations across 500 generations of genetic algorithm optimization to find the best allocation shown above."
+        "insight": "Sistem kami mensimulasikan dan mengevaluasi lebih dari 100.000 kombinasi portofolio melalui 500 generasi optimasi Algoritma Genetika untuk menemukan alokasi terbaik di atas."
     }
     
     return {
-        "capital": f"IDR {capital:,.0f}",
+        "capital": format_idr(capital),
         "duration_years": duration_years,
         "allocation": allocation_details,
         "return": layman_return,
@@ -103,15 +118,17 @@ def format_layman_results(results: dict, capital: float, duration_years: int = 1
 
 def _get_asset_description(name: str) -> str:
     """
-    Layman-friendly description for types of assets.
+    Layman-friendly description for types of assets in Indonesian.
     """
     name_upper = name.upper()
     if "DEPOSITO" in name_upper or "TIME DEPOSIT" in name_upper:
-        return "Fixed-rate short-term savings guaranteed by deposit insurance (LPS). Highly secure."
+        return "Tabungan jangka pendek bunga tetap dijamin LPS. Sangat aman."
     elif "SBN" in name_upper or "ORI" in name_upper or "BOND" in name_upper:
-        return "Government Securities. Debt instruments issued by the Republic of Indonesia. 100% state-backed."
+        return "Surat Berharga Negara. Dijamin 100% oleh Pemerintah RI."
     elif "EMAS" in name_upper or "ANTM" in name_upper or "GC=F" in name_upper or "GOLD" in name_upper:
-        return "Gold Bullion. The ultimate hedge against inflation and systemic risk. Historically stable in the long term."
+        return "Emas Fisik (ANTM). Pelindung nilai terbaik dari inflasi & krisis."
     else:
         # Stock
-        return f"Publicly traded stock ({name}). High growth potential through business equity, subject to market swings."
+        ticker = name.replace(".JK", "").replace(".jk", "")
+        return f"Saham perusahaan terbuka ({ticker}). Potensi profit tinggi dari ekuitas bisnis."
+

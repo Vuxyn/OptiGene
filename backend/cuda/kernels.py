@@ -1,14 +1,17 @@
-import cupy as cp
 import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
 
-# CUDA C Code
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
+
 CUDA_CODE = """
 extern "C" {
 
-// LCG PRNG
+// Random Number Generator
 __device__ float rand_float(unsigned int* seed) {
     *seed = (*seed * 1103515245 + 12345);
     return (float)(*seed) / (float)4294967295.0f;
@@ -100,8 +103,9 @@ __global__ void monte_carlo_simulation_kernel(
 }
 """
 
-# Compile kernels globally
 try:
+    if cp is None:
+        raise ImportError("CuPy is not installed.")
     module = cp.RawModule(code=CUDA_CODE)
     cov_kernel = module.get_function("covariance_kernel")
     eval_kernel = module.get_function("evaluate_portfolios_kernel")
@@ -123,13 +127,11 @@ def gpu_compute_covariance(df_returns: np.ndarray, means: np.ndarray) -> np.ndar
         raise RuntimeError("CUDA is not available. Use CPU fallback.")
         
     T, N = df_returns.shape
-    
-    # Allocate GPU memory
+
     d_R = cp.asarray(df_returns, dtype=cp.float32)
     d_means = cp.asarray(means, dtype=cp.float32)
     d_Sigma = cp.zeros((N, N), dtype=cp.float32)
-    
-    # Configure grid & block dimensions for 2D kernel
+
     threads_per_block = (16, 16)
     blocks_per_grid = (
         int((N + 15) / 16),
@@ -139,7 +141,6 @@ def gpu_compute_covariance(df_returns: np.ndarray, means: np.ndarray) -> np.ndar
     # Execute covariance kernel
     cov_kernel(blocks_per_grid, threads_per_block, (d_R, d_means, d_Sigma, T, N))
     
-    # Copy results back to host (CPU) numpy array
     return cp.asnumpy(d_Sigma)
 
 def gpu_evaluate_portfolios(
@@ -155,8 +156,7 @@ def gpu_evaluate_portfolios(
         raise RuntimeError("CUDA is not available. Use CPU fallback.")
         
     P, N = weights.shape
-    
-    # Allocate GPU memory
+   
     d_W = cp.asarray(weights, dtype=cp.float32)
     d_mu = cp.asarray(mu, dtype=cp.float32)
     d_Sigma = cp.asarray(Sigma, dtype=cp.float32)

@@ -64,11 +64,8 @@ def calculate_portfolio_metrics(w: np.ndarray, mu: np.ndarray, Sigma: np.ndarray
     sharpe = (port_return - rf_rate) / port_vol if port_vol > 0 else -99.0
     
     # Max Drawdown: calculate from historical price relative paths (P_rel)
-    # P_rel is a T x N matrix (trading days as rows, assets as columns)
-    # Portfolio value path: V_t = P_rel * w
     port_values = np.dot(P_rel, w)
     
-    # Find maximum peak-to-trough drawdown
     cum_max = np.maximum.accumulate(port_values)
     drawdowns = (cum_max - port_values) / cum_max
     max_dd = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0.0
@@ -84,14 +81,7 @@ def evaluate_portfolios_rdd(
     constraints: dict, 
     rf_rate: float
 ) -> tuple[list[tuple], tuple]:
-    """
-    Evaluates the portfolio population in parallel using PySpark RDD (map, filter, reduce).
-    
-    Returns:
-        evaluated_list: List of evaluated portfolios passing the risk constraints.
-        best_portfolio: The absolute best portfolio tuple (weights, return, vol, sharpe, max_dd) based on RDD reduce.
-    """
-    # 1. Broadcast large read-only variables to all worker nodes
+
     sc = spark.sparkContext
     b_mu = sc.broadcast(mu)
     b_Sigma = sc.broadcast(Sigma)
@@ -99,12 +89,10 @@ def evaluate_portfolios_rdd(
     b_rf = sc.broadcast(rf_rate)
     b_constraints = sc.broadcast(constraints)
     
-    # 2. Parallelize the portfolio population list into RDD partitions
+    # Parallelize the portfolio population list into RDD partitions
     num_partitions = max(4, sc.defaultParallelism)
     rdd_weights = sc.parallelize(portfolios, num_partitions)
     
-    # 3. RDD MAP: Calculate Sharpe ratio and other metrics for each portfolio candidate
-    # Input: w (weights) -> Output: (w, return, volatility, sharpe, max_drawdown)
     def map_metrics(w):
         ret, vol, sharpe, max_dd = calculate_portfolio_metrics(
             w, b_mu.value, b_Sigma.value, b_P_rel.value, b_rf.value
@@ -113,16 +101,12 @@ def evaluate_portfolios_rdd(
         
     rdd_metrics = rdd_weights.map(map_metrics)
     
-    # 4. RDD FILTER: Prune portfolios violating risk profile boundaries
-    # Constraints: max_saham, min_fixed, max_drawdown
     def filter_constraints(item):
         w, ret, vol, sharpe, max_dd = item
         cons = b_constraints.value
         
-        # Asset weights breakdown: index 0 and 1 are fixed income, index 2 onwards are stocks/gold
         fixed_weight = w[0] + w[1]
-        saham_weight = sum(w[2:]) # Stocks + Gold are grouped as dynamic/equity category
-        
+        saham_weight = sum(w[2:])
         if saham_weight > cons.get("max_saham", 1.0):
             return False
         if fixed_weight < cons.get("min_fixed", 0.0):

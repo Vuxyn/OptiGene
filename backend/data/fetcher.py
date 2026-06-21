@@ -5,11 +5,12 @@ import pandas as pd
 import numpy as np
 import time
 import logging
+import os
+import json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Representative LQ45 tickers that are stable and have a listing history > 3 years (IPO before 2022)
 LQ45_TICKERS = [
     "BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK",
     "UNVR.JK", "ADRO.JK", "PGAS.JK", "PTBA.JK", "INDF.JK",
@@ -21,95 +22,140 @@ LQ45_TICKERS = [
 DEFAULT_BI_RATE = 0.0625  # Fallback 6.25%
 DEFAULT_SBN_RATE = 0.0675 # Fallback 6.75%
 
+FALLBACK_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fallback_rates.json")
+
+# Initialize fallback_rates.json with defaults if not present
+try:
+    if not os.path.exists(FALLBACK_CONFIG_PATH):
+        config = {
+            "bi_rate": DEFAULT_BI_RATE,
+            "sbn_rate": DEFAULT_SBN_RATE
+        }
+        with open(FALLBACK_CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=4)
+        logger.info(f"Initialized default fallback rates config at: {FALLBACK_CONFIG_PATH}")
+except Exception as e:
+    logger.error(f"Failed to initialize fallback rates config: {e}")
+
+def get_fallback_rate(rate_key: str, default_val: float) -> float:
+    """
+    Loads a fallback rate from the local config json file.
+    """
+    try:
+        if os.path.exists(FALLBACK_CONFIG_PATH):
+            with open(FALLBACK_CONFIG_PATH, "r") as f:
+                config = json.load(f)
+                if rate_key in config:
+                    return float(config[rate_key])
+    except Exception as e:
+        logger.error(f"Failed to read fallback rates config: {e}")
+    return default_val
+
 def fetch_bi_rate() -> float:
-    """
-    Scrapes the latest BI Rate (Central Bank interest rate) from Bank Indonesia or Trading Economics.
-    Uses default fallback rate if scraping fails.
-    """
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # Approach 1: Scraping Bank Indonesia official site
+    # Scraping Trading Economics (Indonesia Interest Rate)
     try:
-        url = "https://www.bi.go.id/id/default.aspx"
-        response = requests.get(url, headers=headers, timeout=10)
+        url = "https://tradingeconomics.com/indonesia/interest-rate"
+        response = requests.get(url, headers=headers, timeout=2.5)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            # Look for the BI-Rate text on the homepage
-            # Usually placed inside a specific widget / textbox
+            tables = soup.find_all("table")
+            for table in tables:
+                rows = table.find_all("tr")
+                for row in rows:
+                    cells = [c.get_text().strip() for c in row.find_all(["td", "th"])]
+                    if cells and cells[0] == "Interest Rate":
+                        try:
+                            rate = float(cells[1]) / 100.0
+                            if 0.01 <= rate <= 0.15:
+                                logger.info(f"BI Rate successfully fetched from Trading Economics table: {rate*100:.2f}%")
+                                return rate
+                        except (ValueError, IndexError):
+                            pass
+                            
+            val_div = soup.find("div", {"class": "value"})
+            if val_div:
+                rate = float(val_div.text.strip()) / 100.0
+                if 0.01 <= rate <= 0.15:
+                    logger.info(f"BI Rate successfully fetched from Trading Economics div: {rate*100:.2f}%")
+                    return rate
+    except Exception as e:
+        logger.warning(f"Failed to scrape BI Rate from Trading Economics: {e}")
+
+    # Scraping Bank Indonesia official site
+    try:
+        url = "https://www.bi.go.id/id/default.aspx"
+        response = requests.get(url, headers=headers, timeout=2.0)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
             elements = soup.find_all(text=True)
             for element in elements:
                 if "BI-Rate" in element:
-                    # Try to locate the percentage figure nearby
                     parent = element.parent
                     siblings = list(parent.parent.stripped_strings)
                     for sib in siblings:
-                        if "%" in sib:
-                            clean_val = sib.replace("%", "").replace(",", ".").strip()
-                            rate = float(clean_val) / 100.0
-                            logger.info(f"BI Rate successfully fetched from Bank Indonesia: {rate*100:.2f}%")
-                            return rate
+                        import re
+                        match = re.search(r'(\d+(?:[\.,]\d+)?)', sib)
+                        if match:
+                            clean_val = match.group(1).replace(",", ".")
+                            try:
+                                rate = float(clean_val) / 100.0
+                                if 0.01 <= rate <= 0.15:
+                                    logger.info(f"BI Rate successfully fetched from Bank Indonesia: {rate*100:.2f}%")
+                                    return rate
+                            except ValueError:
+                                continue
     except Exception as e:
         logger.warning(f"Failed to scrape BI Rate from Bank Indonesia: {e}")
 
-    # Approach 2: Scraping Trading Economics (Indonesia Interest Rate)
-    try:
-        url = "https://tradingeconomics.com/indonesia/interest-rate"
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            # Main indicator value is typically in a div with the class "value"
-            val_div = soup.find("div", {"class": "value"})
-            if val_div:
-                rate = float(val_div.text.strip()) / 100.0
-                logger.info(f"BI Rate successfully fetched from Trading Economics: {rate*100:.2f}%")
-                return rate
-            
-            # Alternative: Search historical data table
-            table = soup.find("table", {"id": "historical-data-table"})
-            if table:
-                first_row = table.find("tbody").find("tr")
-                cells = first_row.find_all("td")
-                rate = float(cells[1].text.strip()) / 100.0
-                logger.info(f"BI Rate successfully fetched from Trading Economics Table: {rate*100:.2f}%")
-                return rate
-    except Exception as e:
-        logger.warning(f"Failed to scrape BI Rate from Trading Economics: {e}")
-        
-    logger.info(f"Using fallback BI Rate: {DEFAULT_BI_RATE*100:.2f}%")
-    return DEFAULT_BI_RATE
+    fallback_rate = get_fallback_rate("bi_rate", DEFAULT_BI_RATE)
+    logger.info(f"Using fallback BI Rate: {fallback_rate*100:.2f}%")
+    return fallback_rate
 
 def fetch_sbn_rate() -> float:
-    """
-    Scrapes the latest 10-Year Government Bond Yield (SBN) from Trading Economics or CNBC Indonesia.
-    Uses default fallback rate if scraping fails.
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    # Approach 1: Scraping Trading Economics (Indonesia 10Y Government Bond Yield)
+    # Scraping Trading Economics (Indonesia 10Y Government Bond Yield)
     try:
         url = "https://tradingeconomics.com/indonesia/government-bond-yield"
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=2.5)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
+            tables = soup.find_all("table")
+            for table in tables:
+                rows = table.find_all("tr")
+                for row in rows:
+                    cells = [c.get_text().strip() for c in row.find_all(["td", "th"])]
+                    if cells and cells[0] == "Indonesia 10Y":
+                        try:
+                            rate = float(cells[1]) / 100.0
+                            if 0.01 <= rate <= 0.20:
+                                logger.info(f"SBN 10Y Yield successfully fetched from Trading Economics table: {rate*100:.2f}%")
+                                return rate
+                        except (ValueError, IndexError):
+                            pass
+                            
             val_div = soup.find("div", {"class": "value"})
             if val_div:
                 rate = float(val_div.text.strip()) / 100.0
-                logger.info(f"SBN 10Y Yield successfully fetched from Trading Economics: {rate*100:.2f}%")
-                return rate
+                if 0.01 <= rate <= 0.20:
+                    logger.info(f"SBN 10Y Yield successfully fetched from Trading Economics div: {rate*100:.2f}%")
+                    return rate
     except Exception as e:
         logger.warning(f"Failed to scrape SBN Yield from Trading Economics: {e}")
         
-    # Approach 2: Scraping CNBC Indonesia Bond Market Page
+    # Scraping CNBC Indonesia Bond Market Page
     try:
         url = "https://www.cnbcindonesia.com/market/indeks-sbn"
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=2.0)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            # Find table rows containing "10 Tahun" or similar
             rows = soup.find_all("tr")
             for row in rows:
                 text = row.get_text()
@@ -124,8 +170,9 @@ def fetch_sbn_rate() -> float:
     except Exception as e:
         logger.warning(f"Failed to scrape SBN Yield from CNBC Indonesia: {e}")
 
-    logger.info(f"Using fallback SBN Yield: {DEFAULT_SBN_RATE*100:.2f}%")
-    return DEFAULT_SBN_RATE
+    fallback_rate = get_fallback_rate("sbn_rate", DEFAULT_SBN_RATE)
+    logger.info(f"Using fallback SBN Yield: {fallback_rate*100:.2f}%")
+    return fallback_rate
 
 def fetch_asset_prices(tickers: list, start_date: str = "2022-01-01", end_date: str = "2024-12-31") -> pd.DataFrame:
     """

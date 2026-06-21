@@ -241,22 +241,22 @@ notebook_content = {
  "metadata": {
   "focus_cell": 0,
   "kernelspec": {
-   "display_name": "Python 3 (ipykernel)",
+   "display_name": "spark311",
    "language": "python",
-   "name": "python3"
+   "name": "spark311"
   },
   "language_info": {
    "codemirror_mode": {
-    "name": "ipytext",
-    "value": "hybrid"
-  },
-  "file_extension": ".py",
-  "mimetype": "text/x-python",
-  "name": "python",
-  "nbconvert_exporter": "python",
-  "pygments_lexer": "ipython3",
-  "version": "3.12.3"
- }
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.11.15"
+  }
  },
  "nbformat": 4,
  "nbformat_minor": 2

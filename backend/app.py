@@ -9,6 +9,9 @@ from backend.orchestrator import optimize_portfolio_flow
 from backend.benchmark.runner import run_benchmark
 from backend.data.cache import load_prices_cache, load_rates_cache
 from backend.pyspark.session import stop_spark_session
+from backend.data.asset_info import ASSET_DATABASE
+from backend.formatter import format_idr
+import yfinance as yf
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -134,6 +137,72 @@ def api_benchmark():
     except Exception as e:
         logger.error(f"Error on /api/benchmark: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/asset/{name}")
+def api_asset_detail(name: str):
+    """
+    Returns detailed information about an asset by name or symbol.
+    """
+    key = name.upper().strip()
+    
+    # Simple normalizer
+    if "DEPOSITO" in key:
+        key = "DEPOSITO"
+    elif "SBN" in key or "OBLIGASI" in key or "BOND" in key:
+        key = "OBLIGASI SBN"
+    elif "EMAS" in key or "GOLD" in key or "ANTM" in key:
+        key = "EMAS (ANTM)"
+        
+    if key not in ASSET_DATABASE:
+        # Check if it's in the format ADRO.JK or similar
+        clean_key = key.replace(".JK", "").replace(".jk", "")
+        if clean_key in ASSET_DATABASE:
+            key = clean_key
+        else:
+            raise HTTPException(status_code=404, detail=f"Asset '{name}' not found in database.")
+            
+    asset_info = ASSET_DATABASE[key].copy()
+    
+    # Try fetching real-time data from yfinance if it's a stock
+    if key not in ["DEPOSITO", "OBLIGASI SBN", "EMAS (ANTM)"]:
+        try:
+            ticker_symbol = f"{key}.JK"
+            ticker = yf.Ticker(ticker_symbol)
+            info = ticker.info
+            
+            # Extract real-time info if available
+            real_time_price = info.get("currentPrice") or info.get("regularMarketPrice")
+            if real_time_price:
+                asset_info["metrics"]["Harga Terkini"] = format_idr(real_time_price)
+                
+            pe_ratio = info.get("trailingPE") or info.get("forwardPE")
+            if pe_ratio:
+                asset_info["metrics"]["P/E Ratio"] = f"{pe_ratio:.2f}x"
+                
+            div_yield = info.get("dividendYield")
+            if div_yield:
+                # If dividendYield is a fraction (e.g. 0.0565), multiply by 100
+                # If it's already a percentage (e.g. 5.65), display directly
+                if div_yield < 1.0:
+                    asset_info["metrics"]["Dividend Yield"] = f"{div_yield * 100:.2f}%"
+                else:
+                    asset_info["metrics"]["Dividend Yield"] = f"{div_yield:.2f}%"
+                
+            mcap = info.get("marketCap")
+            if mcap:
+                if mcap >= 1_000_000_000_000:
+                    asset_info["metrics"]["Market Cap"] = f"Rp {mcap / 1_000_000_000_000:.1f} Triliun"
+                else:
+                    asset_info["metrics"]["Market Cap"] = f"Rp {mcap / 1_000_000:.1f} Juta"
+        except Exception as e:
+            # Silently fall back to pre-recorded metrics
+            logger.warning(f"yfinance failed to fetch info for {key}: {e}. Using fallback local database info.")
+            pass
+            
+    return {
+        "status": "success",
+        "data": asset_info
+    }
 
 # Spark cleanup handler when processes are terminated
 @app.on_event("shutdown")

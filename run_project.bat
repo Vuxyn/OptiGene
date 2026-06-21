@@ -5,7 +5,7 @@ echo       Starting OptiGene Web Servers
 echo =========================================
 
 echo Starting OptiGene Backend Server (FastAPI on port 5000)...
-start cmd /k "title OptiGene Backend (FastAPI) && conda run -n spark312 uvicorn backend.app:app --host 127.0.0.1 --port 5000 --reload"
+start cmd /k "title OptiGene Backend (FastAPI) && conda run -n spark311 uvicorn backend.app:app --host 127.0.0.1 --port 5000 --reload"
 
 echo Starting OptiGene Frontend Server (Next.js on port 3000)...
 start cmd /k "title OptiGene Frontend (Next.js) && cd frontend && npm run dev"

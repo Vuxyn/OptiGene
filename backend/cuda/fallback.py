@@ -4,9 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 def cpu_compute_covariance(df_returns: np.ndarray, means: np.ndarray) -> np.ndarray:
-    """
-    Computes the annualized covariance matrix using the CPU (NumPy).
-    """
+
     logger.info("Running compute_covariance on CPU...")
     # T, N = df_returns.shape
     # Returns values minus their means
@@ -52,9 +50,7 @@ def cpu_monte_carlo(
     num_sims: int = 1000, 
     num_days: int = 252
 ) -> np.ndarray:
-    """
-    Runs Monte Carlo simulations on the CPU using NumPy (Geometric Brownian Motion).
-    """
+
     dt = 1.0 / 252.0
     drift = (ret - 0.5 * vol * vol) * dt
     diffusion = vol * np.sqrt(dt)

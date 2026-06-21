@@ -155,8 +155,8 @@ def optimize_portfolio_flow(
             P_rel[:, col_idx] = 1.0
 
     # 7. Run Genetic Algorithm Optimizer
-    # Default parameters: population size = 1000, generations = 500
-    optimizer = GeneticOptimizer(pop_size=1000, generations=500)
+    # Default parameters: population size = 500, generations = 150 (fast & converged)
+    optimizer = GeneticOptimizer(pop_size=500, generations=150)
     
     # Ensure Spark session is passed to the optimizer if PySpark mode is used
     if "pyspark" in mode.lower() and spark is None:
